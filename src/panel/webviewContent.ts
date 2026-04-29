@@ -287,6 +287,8 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
 .p-name{font-size:12px;font-weight:600;flex:1}
 .provider-fields{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--vscode-panel-border)}
 .provider-fields.open{display:block}
+.model-row{display:flex;gap:6px;align-items:center}
+.model-row select,.model-row input{flex:1}
 </style>
 </head>
 <body>
@@ -473,11 +475,15 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
       <div class="provider-fields" id="pf-groq">
         <label>API Key</label><input id="key-groq" type="password" placeholder="gsk_...">
         <label>Model</label>
-        <select id="model-groq">
+        <div class="model-row">
+        <select id="model-groq" onchange="toggleCustomModel('groq')">
           <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recommended)</option>
           <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
           <option value="gemma2-9b-it">gemma2-9b-it</option>
+          <option value="__custom__">Other</option>
         </select>
+        <input id="custom-model-groq" type="text" placeholder="Type custom model" style="display:none">
+        </div>
         <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
           <button class="btn btn-sm" onclick="saveProv('groq')">Save</button>
           <a href="https://console.groq.com/keys" style="font-size:10.5px;color:#569cd6;text-decoration:none">Get free key ↗</a>
@@ -513,10 +519,14 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
       <div class="provider-fields" id="pf-gemini">
         <label>API Key</label><input id="key-gemini" type="password" placeholder="AIza...">
         <label>Model</label>
-        <select id="model-gemini">
+        <div class="model-row">
+        <select id="model-gemini" onchange="toggleCustomModel('gemini')">
           <option value="gemini-1.5-flash">gemini-1.5-flash (free)</option>
           <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+          <option value="__custom__">Other</option>
         </select>
+        <input id="custom-model-gemini" type="text" placeholder="Type custom model" style="display:none">
+        </div>
         <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
           <button class="btn btn-sm" onclick="saveProv('gemini')">Save</button>
           <a href="https://aistudio.google.com/app/apikey" style="font-size:10.5px;color:#569cd6;text-decoration:none">Get free key ↗</a>
@@ -534,10 +544,14 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
       <div class="provider-fields" id="pf-anthropic">
         <label>API Key</label><input id="key-anthropic" type="password" placeholder="sk-ant-...">
         <label>Model</label>
-        <select id="model-anthropic">
+        <div class="model-row">
+        <select id="model-anthropic" onchange="toggleCustomModel('anthropic')">
           <option value="claude-haiku-4-5-20251001">claude-haiku (fastest)</option>
           <option value="claude-sonnet-4-5">claude-sonnet (best)</option>
+          <option value="__custom__">Other</option>
         </select>
+        <input id="custom-model-anthropic" type="text" placeholder="Type custom model" style="display:none">
+        </div>
         <div style="margin-top:8px"><button class="btn btn-sm" onclick="saveProv('anthropic')">Save</button></div>
       </div>
     </div>
@@ -552,10 +566,14 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
       <div class="provider-fields" id="pf-openai">
         <label>API Key</label><input id="key-openai" type="password" placeholder="sk-...">
         <label>Model</label>
-        <select id="model-openai">
+        <div class="model-row">
+        <select id="model-openai" onchange="toggleCustomModel('openai')">
           <option value="gpt-4o-mini">gpt-4o-mini (cheapest)</option>
           <option value="gpt-4o">gpt-4o</option>
+          <option value="__custom__">Other</option>
         </select>
+        <input id="custom-model-openai" type="text" placeholder="Type custom model" style="display:none">
+        </div>
         <div style="margin-top:8px"><button class="btn btn-sm" onclick="saveProv('openai')">Save</button></div>
       </div>
     </div>
@@ -1215,11 +1233,25 @@ function saveProv(name){
   const k=document.getElementById('key-'+name); 
   if(k) { p.apiKey=k.value.trim(); }
   const m=document.getElementById('model-'+name); 
-  if(m) { p.model=m.value; }
+  if(m) {
+    const custom=document.getElementById('custom-model-'+name);
+    p.model=m.value === '__custom__' ? (custom?.value.trim() || '') : m.value;
+  }
   const b=document.getElementById('baseurl-'+name); 
   if(b) { p.baseUrl=b.value.trim(); }
   if (!vscode) { return; }
   vscode.postMessage({type:'saveProvider',payload:p});
+}
+
+function toggleCustomModel(name) {
+  const select = document.getElementById('model-'+name);
+  const input = document.getElementById('custom-model-'+name);
+  if (!select || !input) { return; }
+  const isCustom = select.value === '__custom__';
+  input.style.display = isCustom ? 'block' : 'none';
+  if (isCustom && !input.value) {
+    input.focus();
+  }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1252,6 +1284,17 @@ window.addEventListener('message',e=>{
     case 'graphReady':
       setProgress(2,40,'Graph built!');
       initGraph(payload);
+      break;
+
+    case 'restoreAnalysis':
+      _repoName=payload.repoName;
+      _summary=payload.summary;
+      setAnalyzing(false);
+      initGraph(payload.graph);
+      showFileSummaries(payload.fileSummaries || []);
+      if(_summary) showSummary(_summary,_repoName);
+      if(payload.hasQA) enableQA();
+      showAlert('analyze','✓ Restored previous analysis. Re-analyze to refresh it.','success');
       break;
 
     case 'summaryReady':
@@ -1291,7 +1334,20 @@ window.addEventListener('message',e=>{
         }
         if(payload.model){
           const m=document.getElementById('model-'+payload.providerName);
-          if(m) m.value=payload.model;
+          const custom=document.getElementById('custom-model-'+payload.providerName);
+          if(m) {
+            const knownValues = Array.from(m.options).map((o) => o.value);
+            if (knownValues.includes(payload.model)) {
+              m.value = payload.model;
+              if (custom) custom.style.display = 'none';
+            } else {
+              m.value = '__custom__';
+              if (custom) {
+                custom.value = payload.model;
+                custom.style.display = 'block';
+              }
+            }
+          }
         }
       }
       break;
@@ -1311,6 +1367,10 @@ window.addEventListener('load', () => {
   hydrateIcons();
   if (!vscode) { return; }
   vscode.postMessage({type:'getSettings'});
+});
+
+window.addEventListener('message', () => {
+  ['groq','gemini','anthropic','openai'].forEach((name) => toggleCustomModel(name));
 });
 </script>
 </body>

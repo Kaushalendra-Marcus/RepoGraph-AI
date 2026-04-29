@@ -10,6 +10,15 @@ interface ProviderSettings {
   name: string; apiKey?: string; model?: string; baseUrl?: string;
 }
 
+interface AnalysisState {
+  repoName: string;
+  sourceInfo: SourceInfo;
+  repoInfo: RepoInfo;
+  graph: DependencyGraph;
+  summary: RepoSummary;
+  fileSummaries: FileSummary[];
+}
+
 type SourceInfo = (RepoInfo | WorkspaceInfo) & { files: Array<{ path: string; content: string; size: number; language: string; absPath?: string }> };
 
 export class RepoGraphPanel implements vscode.WebviewViewProvider {
@@ -17,8 +26,10 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
   private provider?: AIProvider;
   private qaAgent?: QAAgent;
   private sourceInfo?: SourceInfo;
+  private repoInfo?: RepoInfo;
   private graph?: DependencyGraph;
   private summary?: RepoSummary;
+  private cachedAnalysis?: AnalysisState;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -51,7 +62,10 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
       cspSource: webviewView.webview.cspSource,
       iconUris,
     });
-    this.loadSavedSettings();
+    void (async () => {
+      await this.loadSavedSettings();
+      await this.restoreCachedAnalysis();
+    })();
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       try {
@@ -81,6 +95,9 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
     try {
       const key = apiKey || await this.context.secrets.get(`repograph.${name}.apiKey`);
       this.provider = createProvider(name, { name, apiKey: key, model, baseUrl });
+      if (this.repoInfo && this.graph && this.summary) {
+        this.qaAgent = new QAAgent(this.provider, this.repoInfo, this.graph, this.summary);
+      }
       this.post({ type: "providerSaved", payload: { name, success: true } });
     } catch (e: any) {
       this.post({ type: "error", payload: { message: e.message } });
@@ -99,6 +116,34 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
     // Tell UI if workspace is available
     const hasWorkspace = !!(vscode.workspace.workspaceFolders?.length);
     this.post({ type: "workspaceStatus", payload: { hasWorkspace, name: vscode.workspace.workspaceFolders?.[0]?.name } });
+  }
+
+  private async restoreCachedAnalysis() {
+    const cached = this.context.workspaceState.get<AnalysisState>("repograph.lastAnalysis");
+    if (!cached) {
+      return;
+    }
+
+    this.cachedAnalysis = cached;
+    this.sourceInfo = cached.sourceInfo;
+    this.repoInfo = cached.repoInfo;
+    this.graph = cached.graph;
+    this.summary = cached.summary;
+
+    if (this.provider) {
+      this.qaAgent = new QAAgent(this.provider, cached.repoInfo, cached.graph, cached.summary);
+    }
+
+    this.post({
+      type: "restoreAnalysis",
+      payload: {
+        repoName: cached.repoName,
+        graph: cached.graph,
+        summary: cached.summary,
+        fileSummaries: cached.fileSummaries,
+        hasQA: !!this.qaAgent,
+      },
+    });
   }
 
   // ── LOCAL WORKSPACE ───────────────────────────────────────────────────────
@@ -160,6 +205,8 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
       files: info.files as any,
       tree: [],
     };
+    const repoInfo = fakeRepoInfo as RepoInfo;
+    this.repoInfo = repoInfo;
     this.summary = await summarizeRepo(this.provider, fakeRepoInfo, this.graph);
     this.post({ type: "summaryReady", payload: this.summary });
 
@@ -171,8 +218,18 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
     });
     this.post({ type: "fileSummariesReady", payload: fileSummaries });
 
+    this.cachedAnalysis = {
+      repoName,
+      sourceInfo: info,
+      repoInfo,
+      graph: this.graph,
+      summary: this.summary,
+      fileSummaries,
+    };
+    await this.context.workspaceState.update("repograph.lastAnalysis", this.cachedAnalysis);
+
     // Step 5: Q&A ready
-    this.qaAgent = new QAAgent(this.provider, fakeRepoInfo, this.graph, this.summary);
+    this.qaAgent = new QAAgent(this.provider, repoInfo, this.graph, this.summary);
     this.post({ type: "analysisComplete", payload: { repoName } });
   }
 
