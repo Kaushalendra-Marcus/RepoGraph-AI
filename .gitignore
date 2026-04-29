@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+build/
+
+# VS Code extension packages
+*.vsix
+*.tgz
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+*.local
+secrets.json
+config.local.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code settings (keep shared configs)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# Test and coverage
+coverage/
+.nyc_output/
+
+# Cache and temp
+.cache/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Frontend/webview build artifacts
+public/dist/
+public/build/
+
+# VS Code test runtime
+.vscode-test/
+test-results/

@@ -1,0 +1,107 @@
+{
+  "name": "repograph-ai",
+  "displayName": "RepoGraph AI",
+  "description": "Instantly understand any GitHub codebase with AI-powered dependency graphs, file summaries & Q&A",
+  "version": "0.1.0",
+  "publisher": "repograph",
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "github",
+    "ai",
+    "codebase",
+    "graph",
+    "dependency"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "repograph.open",
+        "title": "RepoGraph AI: Open Panel",
+        "icon": "$(graph)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "repograph",
+          "title": "RepoGraph AI",
+          "icon": "assets/icon-mono.svg"
+        }
+      ]
+    },
+    "views": {
+      "repograph": [
+        {
+          "type": "webview",
+          "id": "repograph.mainView",
+          "name": "RepoGraph AI",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RepoGraph AI",
+      "properties": {
+        "repograph.defaultProvider": {
+          "type": "string",
+          "default": "groq",
+          "enum": [
+            "groq",
+            "ollama",
+            "gemini",
+            "anthropic",
+            "openai"
+          ],
+          "description": "Default AI provider"
+        },
+        "repograph.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama local server URL"
+        },
+        "repograph.ollamaModel": {
+          "type": "string",
+          "default": "llama3.2",
+          "description": "Ollama model name"
+        },
+        "repograph.groqModel": {
+          "type": "string",
+          "default": "llama-3.3-70b-versatile",
+          "enum": [
+            "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+          ],
+          "description": "Groq model"
+        },
+        "repograph.geminiModel": {
+          "type": "string",
+          "default": "gemini-1.5-flash",
+          "description": "Gemini model"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "@types/vscode": "^1.116.0",
+    "typescript": "^5.9.3"
+  }
+}
