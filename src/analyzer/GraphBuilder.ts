@@ -1,3 +1,5 @@
+import { RepoFile } from "./RepoFetcher";
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -5,8 +7,8 @@ export interface GraphNode {
   absPath?: string;
   language: string;
   size: number;
-  imports: string[];       // raw import strings
-  importedBy: string[];    // resolved paths that import this file
+  imports: string[];
+  importedBy: string[];
   exports: string[];
   group: string;
   inDegree: number;
@@ -24,78 +26,49 @@ export interface DependencyGraph {
   edges: GraphEdge[];
 }
 
-interface ImportMatch {
-  path: string;
-  names?: string;
-}
-
-// ── Import extraction per language ─────────────────────────────────────────
+interface ImportMatch { path: string; names?: string; }
 
 function extractImports(content: string, lang: string): ImportMatch[] {
   const results: ImportMatch[] = [];
   let m: RegExpExecArray | null;
 
-  if (
-    lang === "TypeScript" ||
-    lang === "JavaScript" ||
-    lang === "Vue" ||
-    lang === "Svelte" ||
-    lang === "Astro"
-  ) {
-    // static imports: import X from 'y', import 'y'
+  if (lang === "TypeScript" || lang === "JavaScript" || lang === "Vue" || lang === "Svelte") {
     const r1 = /import\s+(?:type\s+)?(?:([\w*{}\s,]+)\s+from\s+)?['"]([^'"]+)['"]/g;
-    while ((m = r1.exec(content)) !== null) {
-      results.push({ path: m[2], names: m[1]?.trim() });
-    }
-    // require()
+    while ((m = r1.exec(content)) !== null) results.push({ path: m[2], names: m[1]?.trim() });
+    const r1b = /import\s+['"]([^'"]+)['"]/g;
+    while ((m = r1b.exec(content)) !== null) results.push({ path: m[1] });
+    const r1c = /import\s+\*\s+as\s+[\w$]+\s+from\s+['"]([^'"]+)['"]/g;
+    while ((m = r1c.exec(content)) !== null) results.push({ path: m[1] });
     const r2 = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
     while ((m = r2.exec(content)) !== null) results.push({ path: m[1] });
-    // dynamic import()
-    const r3 = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+    const r3 = /export\s+(?:type\s+)?(?:[\w{}\s,*]+)\s+from\s+['"]([^'"]+)['"]/g;
     while ((m = r3.exec(content)) !== null) results.push({ path: m[1] });
-    // export ... from
-    const r4 = /export\s+(?:type\s+)?(?:[\w{}\s,*]+)\s+from\s+['"]([^'"]+)['"]/g;
+    const r4 = /export\s*\{[^}]+\}\s*from\s*['"]([^'"]+)['"]/g;
     while ((m = r4.exec(content)) !== null) results.push({ path: m[1] });
   } else if (lang === "Python") {
     const r1 = /^from\s+([\w.]+)\s+import\s+(.+)/gm;
-    while ((m = r1.exec(content)) !== null) {
-      results.push({ path: m[1].replace(/\./g, "/"), names: m[2].trim() });
-    }
+    while ((m = r1.exec(content)) !== null) results.push({ path: m[1].replace(/\./g, "/"), names: m[2].trim() });
     const r2 = /^import\s+([\w.]+)/gm;
-    while ((m = r2.exec(content)) !== null) {
-      results.push({ path: m[1].replace(/\./g, "/") });
-    }
+    while ((m = r2.exec(content)) !== null) results.push({ path: m[1].replace(/\./g, "/") });
   } else if (lang === "Go") {
     const r1 = /import\s+"([^"]+)"/g;
     while ((m = r1.exec(content)) !== null) results.push({ path: m[1] });
     const block = content.match(/import\s*\(([^)]+)\)/s);
-    if (block) {
-      const r2 = /"([^"]+)"/g;
-      while ((m = r2.exec(block[1])) !== null) results.push({ path: m[1] });
-    }
+    if (block) { const r2 = /"([^"]+)"/g; while ((m = r2.exec(block[1])) !== null) results.push({ path: m[1] }); }
   } else if (lang === "Rust") {
-    const r1 = /^use\s+([\w:]+)/gm;
-    while ((m = r1.exec(content)) !== null) {
-      results.push({ path: m[1].replace(/::/g, "/") });
-    }
+    const r1 = /use\s+([\w:]+)/g;
+    while ((m = r1.exec(content)) !== null) results.push({ path: m[1].replace(/::/g, "/") });
     const r2 = /^mod\s+(\w+)\s*;/gm;
     while ((m = r2.exec(content)) !== null) results.push({ path: m[1] });
-  } else if (lang === "Java" || lang === "Kotlin") {
+  } else if (lang === "Java") {
     const r1 = /^import\s+([\w.]+);/gm;
-    while ((m = r1.exec(content)) !== null) {
-      results.push({ path: m[1].replace(/\./g, "/") });
-    }
+    while ((m = r1.exec(content)) !== null) results.push({ path: m[1].replace(/\./g, "/") });
   } else if (lang === "Ruby") {
     const r1 = /require(?:_relative)?\s+['"]([^'"]+)['"]/g;
     while ((m = r1.exec(content)) !== null) results.push({ path: m[1] });
   } else if (lang === "PHP") {
     const r1 = /(?:require|include)(?:_once)?\s+['"]([^'"]+)['"]/g;
     while ((m = r1.exec(content)) !== null) results.push({ path: m[1] });
-  } else if (lang === "C#") {
-    const r1 = /^using\s+([\w.]+);/gm;
-    while ((m = r1.exec(content)) !== null) {
-      results.push({ path: m[1].replace(/\./g, "/") });
-    }
   }
 
   return results;
@@ -105,48 +78,30 @@ function extractExports(content: string, lang: string): string[] {
   const exports: string[] = [];
   if (lang === "TypeScript" || lang === "JavaScript") {
     let m: RegExpExecArray | null;
-    const r1 =
-      /export\s+(?:default\s+)?(?:class|function|const|let|var|interface|type|enum|abstract\s+class)\s+(\w+)/g;
+    const r1 = /export\s+(?:default\s+)?(?:class|function|const|let|var|interface|type|enum)\s+(\w+)/g;
     while ((m = r1.exec(content)) !== null) exports.push(m[1]);
     const r2 = /export\s+\{([^}]+)\}/g;
     while ((m = r2.exec(content)) !== null) {
-      exports.push(
-        ...m[1]
-          .split(",")
-          .map((s) => s.trim().split(/\s+as\s+/).pop()!.trim())
-          .filter(Boolean)
-      );
-    }
-  } else if (lang === "Python") {
-    let m: RegExpExecArray | null;
-    const r1 = /^(?:class|def)\s+(\w+)/gm;
-    while ((m = r1.exec(content)) !== null) {
-      if (!m[1].startsWith("_")) exports.push(m[1]);
+      exports.push(...m[1].split(",").map((s) => s.trim().split(/\s+/)[0]).filter(Boolean));
     }
   }
-  return [...new Set(exports)].slice(0, 12);
+  return [...new Set(exports)].slice(0, 10);
 }
-
-// ── Path resolution ────────────────────────────────────────────────────────
 
 function normalizePath(raw: string): string {
   const parts = raw.replace(/\\/g, "/").split("/");
   const out: string[] = [];
-  for (const p of parts) {
-    if (p === "..") out.pop();
-    else if (p !== ".") out.push(p);
-  }
+  for (const p of parts) { if (p === "..") out.pop(); else if (p !== ".") out.push(p); }
   return out.join("/");
 }
 
-function expandCandidates(base: string): string[] {
+function expandImportCandidates(base: string): string[] {
   return [
     base,
     `${base}.ts`,
     `${base}.tsx`,
     `${base}.js`,
     `${base}.jsx`,
-    `${base}.mjs`,
     `${base}.vue`,
     `${base}.svelte`,
     `${base}.py`,
@@ -158,143 +113,98 @@ function expandCandidates(base: string): string[] {
     `${base}/index.jsx`,
     `${base}/index.vue`,
     `${base}/index.svelte`,
-    `${base}/mod.rs`,
-    `${base}/__init__.py`,
+    `${base}/index.py`,
   ];
 }
 
-function resolveImport(
-  imp: string,
-  fromPath: string,
-  allPaths: Set<string>
-): string | null {
-  // Only resolve relative and alias imports
-  const isRelative = imp.startsWith(".");
-  const isAlias =
-    imp.startsWith("@/") ||
-    imp.startsWith("~/") ||
-    imp.startsWith("/") ||
-    imp.startsWith("src/") ||
-    imp.startsWith("app/") ||
-    imp.startsWith("lib/") ||
-    imp.startsWith("components/") ||
-    imp.startsWith("pages/") ||
-    imp.startsWith("utils/") ||
-    imp.startsWith("hooks/") ||
-    imp.startsWith("store/") ||
-    imp.startsWith("api/") ||
-    imp.startsWith("services/");
+function findBySuffix(base: string, allPaths: Set<string>): string | null {
+  const normalized = normalizePath(base);
+  // Exact match first
+  if (allPaths.has(normalized)) return normalized;
+  
+  const matches = [...allPaths].filter((candidate) => {
+    const path = normalizePath(candidate);
+    // Only match if:
+    // 1. Exact match
+    // 2. Candidate ends with /normalized (module folder import)
+    // 3. Candidate ends with /normalized.ext or /normalized/index.ext
+    return path === normalized || 
+           path.endsWith(`/${normalized}`) || 
+           path.endsWith(`/${normalized}.ts`) || 
+           path.endsWith(`/${normalized}.tsx`) || 
+           path.endsWith(`/${normalized}.js`) || 
+           path.endsWith(`/${normalized}.jsx`) || 
+           path.endsWith(`/${normalized}.vue`) || 
+           path.endsWith(`/${normalized}.svelte`) || 
+           path.endsWith(`/${normalized}.py`) ||
+           path === `${normalized}/index.ts` ||
+           path === `${normalized}/index.tsx` ||
+           path === `${normalized}/index.js` ||
+           path === `${normalized}/index.jsx` ||
+           path === `${normalized}/index.vue` ||
+           path === `${normalized}/index.svelte` ||
+           path === `${normalized}/index.py`;
+  });
+  if (!matches.length) return null;
+  matches.sort((a, b) => a.length - b.length);
+  return matches[0];
+}
 
-  if (!isRelative && !isAlias) return null;
+function resolveImport(imp: string, fromPath: string, allPaths: Set<string>): string | null {
+  if (!imp.startsWith(".") && !imp.startsWith("~") && !imp.startsWith("@/") && !imp.startsWith("/")) return null;
+  const fromDir = normalizePath(fromPath).split("/").slice(0, -1).join("/");
+  const rawBase = imp.startsWith("@/") || imp.startsWith("~/") ? imp.slice(2) : imp.startsWith("/") ? imp.slice(1) : normalizePath(`${fromDir}/${imp}`);
+  const base = normalizePath(rawBase);
 
-  let base: string;
-
-  if (isRelative) {
-    const fromDir = normalizePath(fromPath).split("/").slice(0, -1).join("/");
-    base = normalizePath(`${fromDir}/${imp}`);
-  } else if (imp.startsWith("@/") || imp.startsWith("~/")) {
-    base = normalizePath(imp.slice(2));
-  } else if (imp.startsWith("/")) {
-    base = normalizePath(imp.slice(1));
-  } else {
-    base = normalizePath(imp);
-  }
-
-  for (const candidate of expandCandidates(base)) {
+  for (const candidate of expandImportCandidates(base)) {
     if (allPaths.has(candidate)) return candidate;
   }
 
-  // Fuzzy suffix match for when path roots don't align
-  const baseName = base.split("/").pop() || "";
-  if (baseName.length > 2) {
-    for (const p of allPaths) {
-      if (
-        p.endsWith(`/${base}`) ||
-        p.endsWith(`/${base}.ts`) ||
-        p.endsWith(`/${base}.tsx`) ||
-        p.endsWith(`/${base}.js`) ||
-        p.endsWith(`/${base}/index.ts`) ||
-        p.endsWith(`/${base}/index.js`)
-      ) {
-        return p;
-      }
-    }
-  }
-
+  const suffixMatch = findBySuffix(base, allPaths);
+  if (suffixMatch) return suffixMatch;
   return null;
 }
 
-// ── Main graph builder ─────────────────────────────────────────────────────
-
 export function buildDependencyGraph(
-  files: Array<{
-    path: string;
-    content: string;
-    size: number;
-    language: string;
-    absPath?: string;
-  }>
+  files: Array<{ path: string; content: string; size: number; language: string; absPath?: string }>
 ): DependencyGraph {
   const allPaths = new Set(files.map((f) => f.path));
   const nodeMap = new Map<string, GraphNode>();
 
-  // First pass: create all nodes
   for (const file of files) {
     const matches = extractImports(file.content, file.language);
     const exports = extractExports(file.content, file.language);
     const label = file.path.split("/").pop() || file.path;
     const parts = file.path.split("/");
-    // Group by top-level directory, or "root" if at root level
     const group = parts.length > 1 ? parts[0] : "root";
-
     nodeMap.set(file.path, {
-      id: file.path,
-      label,
-      path: file.path,
-      absPath: (file as any).absPath,
-      language: file.language,
-      size: file.size,
-      imports: matches.map((i) => i.path),
-      importedBy: [],
-      exports,
-      group,
-      inDegree: 0,
-      outDegree: 0,
+      id: file.path, label, path: file.path, absPath: (file as any).absPath,
+      language: file.language, size: file.size,
+      imports: matches.map((i) => i.path), importedBy: [], exports,
+      group, inDegree: 0, outDegree: 0,
     });
   }
 
-  // Second pass: resolve imports and build edges
   const edges: GraphEdge[] = [];
   const edgeSet = new Set<string>();
 
   for (const file of files) {
     const node = nodeMap.get(file.path)!;
     const matches = extractImports(file.content, file.language);
-
     for (const match of matches) {
       const resolved = resolveImport(match.path, file.path, allPaths);
       if (!resolved || resolved === file.path) continue;
-
-      const edgeKey = `${file.path}=>${resolved}`;
-      if (edgeSet.has(edgeKey)) continue;
-      edgeSet.add(edgeKey);
-
-      edges.push({
-        source: file.path,
-        target: resolved,
-        label: match.names?.slice(0, 40),
-      });
-
+      const key = `${file.path}→${resolved}`;
+      if (edgeSet.has(key)) continue;
+      edgeSet.add(key);
+      edges.push({ source: file.path, target: resolved, label: match.names?.slice(0, 40) });
       node.outDegree++;
       const target = nodeMap.get(resolved);
-      if (target) {
-        target.inDegree++;
-        target.importedBy.push(file.path);
-      }
+      if (target) { target.inDegree++; target.importedBy.push(file.path); }
     }
   }
 
-  // Deduplicate importedBy
+  // Normalize duplicate references and stabilize the important nodes.
   for (const node of nodeMap.values()) {
     node.importedBy = [...new Set(node.importedBy)];
     node.imports = [...new Set(node.imports)];
@@ -305,6 +215,6 @@ export function buildDependencyGraph(
 
 export function getTopFiles(graph: DependencyGraph, n = 20): GraphNode[] {
   return [...graph.nodes]
-    .sort((a, b) => b.inDegree + b.outDegree - (a.inDegree + a.outDegree))
+    .sort((a, b) => (b.inDegree + b.outDegree) - (a.inDegree + a.outDegree))
     .slice(0, n);
 }

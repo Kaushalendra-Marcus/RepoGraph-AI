@@ -18,66 +18,51 @@ export interface FileSummary {
   dependencies: string;
 }
 
-// ── Repo summary ───────────────────────────────────────────────────────────
-
+// ─── REPO SUMMARY AGENT ───────────────────────────────────────────────────────
 export async function summarizeRepo(
   provider: AIProvider,
   info: WorkspaceInfo,
   graph: DependencyGraph
 ): Promise<RepoSummary> {
-  // Pick the most connected files for context
-  const topNodes = [...graph.nodes]
-    .sort((a, b) => b.inDegree + b.outDegree - (a.inDegree + a.outDegree))
-    .slice(0, 20);
-
-  const fileList = topNodes
-    .map((n) => `- ${n.path} (${n.language}, in:${n.inDegree} out:${n.outDegree})`)
+  const topFiles = graph.nodes
+    .slice(0, 15)
+    .map((n) => `- ${n.path} (${n.language}, imports: ${n.imports.slice(0, 5).join(", ")})`)
     .join("\n");
 
-  // Sample content from the most important files
-  const sampleContent = topNodes
-    .slice(0, 5)
-    .map((n) => {
-      const file = info.files.find((f) => f.path === n.path);
-      if (!file) return "";
-      return `--- ${n.path} ---\n${file.content.slice(0, 600)}`;
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const fileTree = info.files
+    .slice(0, 30)
+    .map((f) => f.path)
+    .join("\n");
 
-  // Also include config files for tech stack detection
-  const configFiles = info.files
-    .filter((f) =>
-      [
-        "package.json", "pyproject.toml", "go.mod", "Cargo.toml",
-        "requirements.txt", "pom.xml", "build.gradle", "Gemfile",
-        "composer.json", ".env.example", "docker-compose.yml",
-      ].some((name) => f.path.endsWith(name))
-    )
+  const sampleContent = info.files
     .slice(0, 3)
     .map((f) => `--- ${f.path} ---\n${f.content.slice(0, 400)}`)
     .join("\n\n");
 
-  const prompt = `You are analyzing a software project called "${info.name}".
+  const prompt = `You are analyzing a workspace/codebase. Based on the structure and code below, provide a comprehensive JSON summary.
 
-Top files by connectivity:
-${fileList}
+Workspace: ${info.name}
+Root: ${info.rootPath}
+Primary Language: ${info.files[0]?.language || 'Mixed'}
 
-Config files:
-${configFiles}
+File Tree (sample):
+${fileTree}
 
-Key file contents:
+Key Files with imports:
+${topFiles}
+
+Sample File Content:
 ${sampleContent}
 
-Respond ONLY with valid JSON matching this exact schema (no markdown, no extra text):
+Respond ONLY with valid JSON (no markdown) matching this exact schema:
 {
-  "overview": "2-3 sentence description of what this project does",
-  "purpose": "What problem does this solve and who uses it?",
-  "architecture": "How is the codebase organized? Describe patterns, layers, folder structure.",
-  "techStack": ["list", "of", "technologies", "frameworks", "libraries"],
-  "entryPoints": ["relative/path/to/main/entry"],
+  "overview": "2-3 sentence overview of what this repo does",
+  "purpose": "What problem does this solve?",
+  "architecture": "How is the codebase organized? (patterns, layers, structure)",
+  "techStack": ["tech1", "tech2", ...],
+  "entryPoints": ["path/to/entry1", ...],
   "keyModules": [
-    { "name": "module or folder name", "description": "what it does" }
+    { "name": "module name", "description": "what it does" }
   ]
 }`;
 
@@ -87,19 +72,19 @@ Respond ONLY with valid JSON matching this exact schema (no markdown, no extra t
     const clean = response.replace(/```json|```/g, "").trim();
     return JSON.parse(clean) as RepoSummary;
   } catch {
+    const langs = [...new Set(info.files.map(f => f.language))].slice(0, 5);
     return {
-      overview: response.slice(0, 300),
-      purpose: "",
+      overview: response.slice(0, 200),
+      purpose: "Could not parse full summary",
       architecture: "",
-      techStack: [],
+      techStack: langs.length > 0 ? langs : ['Mixed'],
       entryPoints: [],
       keyModules: [],
     };
   }
 }
 
-// ── File summaries ─────────────────────────────────────────────────────────
-
+// ─── FILE SUMMARY AGENT ───────────────────────────────────────────────────────
 export async function summarizeFiles(
   provider: AIProvider,
   nodes: GraphNode[],
@@ -107,62 +92,172 @@ export async function summarizeFiles(
   onProgress?: (done: number, total: number) => void
 ): Promise<FileSummary[]> {
   const summaries: FileSummary[] = [];
-  // Summarize top files by connectivity — skip config/markdown-only files
-  const toSummarize = nodes
-    .filter((n) => !["JSON", "Markdown", "YAML", "TOML"].includes(n.language))
-    .slice(0, 30);
+  const nodeByPath = new Map(nodes.map((n) => [n.path, n]));
+  const files = info.files.filter((f) => f.content.trim().length > 0);
 
-  // Batch: 5 files per AI call to save tokens and time
-  const BATCH = 5;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const node = nodeByPath.get(file.path);
+    const imports = node?.imports ?? inferImports(file.content);
 
-  for (let i = 0; i < toSummarize.length; i += BATCH) {
-    const batch = toSummarize.slice(i, i + BATCH);
+    // Keep non-source and very large files deterministic for reliability.
+    const shouldUseHeuristic =
+      ["JSON", "YAML", "TOML", "Markdown"].includes(file.language) || file.content.length > 12000;
 
-    const batchText = batch
-      .map((node) => {
-        const file = info.files.find((f) => f.path === node.path);
-        const content = file ? file.content.slice(0, 800) : "(content not available)";
-        return `FILE: ${node.path}\nLANG: ${node.language}\nIMPORTS: ${node.imports.slice(0, 6).join(", ")}\n\n${content}`;
-      })
-      .join("\n\n---\n\n");
-
-    const prompt = `Analyze these source files and return a JSON array. One object per file.
-
-${batchText}
-
-Return ONLY a valid JSON array (no markdown) with this schema per item:
-[{
-  "path": "exact file path as given",
-  "purpose": "1-2 sentences: what this file does and why it exists",
-  "exports": "what functions/classes/values it exports (comma separated, or empty string)",
-  "dependencies": "key external packages or internal modules it uses"
-}]`;
-
-    try {
-      const res = await provider.chat([{ role: "user", content: prompt }]);
-      const clean = res.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean) as FileSummary[];
-      summaries.push(...parsed);
-    } catch {
-      // On parse failure, add minimal entries so we never return empty
-      for (const node of batch) {
-        summaries.push({
-          path: node.path,
-          purpose: `${node.language} file`,
-          exports: node.exports.join(", "),
-          dependencies: node.imports.slice(0, 4).join(", "),
-        });
-      }
+    if (shouldUseHeuristic) {
+      summaries.push(buildHeuristicSummary(file.path, file.content, imports));
+      onProgress?.(i + 1, files.length);
+      continue;
     }
 
-    onProgress?.(Math.min(i + BATCH, toSummarize.length), toSummarize.length);
+    try {
+      const summary = await summarizeFile(provider, file.path, file.content, imports);
+      summaries.push(mergeWithFallback(summary, file.path, file.content, imports));
+    } catch {
+      summaries.push(buildHeuristicSummary(file.path, file.content, imports));
+    }
+    onProgress?.(i + 1, files.length);
   }
 
   return summaries;
 }
 
-// ── QA Agent ───────────────────────────────────────────────────────────────
+async function summarizeFile(
+  provider: AIProvider,
+  path: string,
+  content: string,
+  imports: string[]
+): Promise<FileSummary> {
+  const prompt = `Analyze this source file and respond ONLY with valid JSON (no markdown).
 
+File: ${path}
+Imports: ${imports.slice(0, 8).join(", ")}
+
+Content (first 1600 chars):
+${content.slice(0, 1600)}
+
+JSON schema:
+{
+  "path": "${path}",
+  "purpose": "What does this file do? (1-2 sentences)",
+  "exports": "What does it export or expose?",
+  "dependencies": "Key dependencies or modules it uses"
+}`;
+
+  const res = await provider.chat([{ role: "user", content: prompt }]);
+  const clean = res.replace(/```json|```/g, "").trim();
+  const jsonText = extractFirstJsonObject(clean) || clean;
+  try {
+    return JSON.parse(jsonText) as FileSummary;
+  } catch {
+    return buildHeuristicSummary(path, content, imports);
+  }
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function inferImports(content: string): string[] {
+  const out = new Set<string>();
+  const patterns = [
+    /import\s+[^"']*?from\s+["']([^"']+)["']/g,
+    /import\s+["']([^"']+)["']/g,
+    /require\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+
+  for (const re of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      if (m[1]) out.add(m[1]);
+    }
+  }
+
+  return [...out].slice(0, 10);
+}
+
+function detectExports(content: string): string {
+  const exportMatches = content.match(/\bexport\s+(?:default\s+)?(?:class|function|const|let|var|interface|type)\s+[A-Za-z0-9_]+/g) || [];
+  const moduleMatches = content.match(/module\.exports\s*=\s*[A-Za-z0-9_]+/g) || [];
+  const names = [...exportMatches, ...moduleMatches]
+    .map((m) => {
+      const parts = m.split(/\s+/).filter(Boolean);
+      return parts[parts.length - 1].replace(/[^A-Za-z0-9_]/g, "");
+    })
+    .filter(Boolean);
+  return names.slice(0, 8).join(", ");
+}
+
+function buildHeuristicSummary(path: string, content: string, imports: string[]): FileSummary {
+  const lines = content.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const firstCodeLike = lines.find((l) => !l.startsWith("//") && !l.startsWith("#") && !l.startsWith("/*")) || "";
+  const folder = path.includes("/") ? path.split("/").slice(0, -1).join("/") : "root";
+  const roleHint = path.endsWith(".test.ts") || path.endsWith(".spec.ts") || path.includes("/test")
+    ? "test logic"
+    : path.endsWith(".md")
+      ? "documentation"
+      : path.endsWith(".json") || path.endsWith(".yaml") || path.endsWith(".yml") || path.endsWith(".toml")
+        ? "configuration/data"
+        : "source logic";
+
+  const purpose = firstCodeLike
+    ? `Provides ${roleHint} in ${folder}. Main clue: ${firstCodeLike.slice(0, 110)}${firstCodeLike.length > 110 ? "..." : ""}`
+    : `Provides ${roleHint} in ${folder}.`;
+
+  return {
+    path,
+    purpose,
+    exports: detectExports(content),
+    dependencies: imports.join(", "),
+  };
+}
+
+function mergeWithFallback(summary: FileSummary, path: string, content: string, imports: string[]): FileSummary {
+  const fallback = buildHeuristicSummary(path, content, imports);
+  return {
+    path,
+    purpose: summary.purpose?.trim() || fallback.purpose,
+    exports: summary.exports?.trim() || fallback.exports,
+    dependencies: summary.dependencies?.trim() || fallback.dependencies,
+  };
+}
+
+// ─── Q&A AGENT ────────────────────────────────────────────────────────────────
 export class QAAgent {
   private history: Message[] = [];
 
@@ -174,39 +269,31 @@ export class QAAgent {
   ) {}
 
   async ask(question: string): Promise<string> {
+    // Build rich context from repo
     const context = this.buildContext(question);
+    const systemPrompt = `You are RepoGraph AI, an expert code analyst helping developers understand the workspace "${this.info.name}".
 
-    const systemPrompt = `You are RepoGraph AI, an expert code analyst for the project "${this.info.name}".
+Repository Summary:
+${this.summary.overview}
 
-Project overview: ${this.summary.overview}
 Architecture: ${this.summary.architecture}
-Tech stack: ${this.summary.techStack.join(", ")}
-Entry points: ${this.summary.entryPoints.join(", ")}
 
-Key modules:
+Tech Stack: ${this.summary.techStack.join(", ")}
+
+Key Modules:
 ${this.summary.keyModules.map((m) => `- ${m.name}: ${m.description}`).join("\n")}
-
-File dependency connections (file -> files it imports):
-${this.graph.edges
-  .slice(0, 60)
-  .map((e) => `${e.source} -> ${e.target}`)
-  .join("\n")}
 
 ${context}
 
-Rules:
-- Reference specific file paths when relevant
-- Be concise and direct
-- If you don't know, say so clearly
-- Use plain text, no markdown headers`;
+Answer questions clearly and concisely. Reference specific file paths when relevant. If you're unsure, say so.`;
 
     this.history.push({ role: "user", content: question });
 
     const response = await this.provider.chat([...this.history], systemPrompt);
     this.history.push({ role: "assistant", content: response });
 
-    // Keep last 16 messages to avoid token overflow
-    if (this.history.length > 16) {
+    // Keep history manageable
+    if (this.history.length > 20) {
       this.history = this.history.slice(-16);
     }
 
@@ -215,25 +302,30 @@ Rules:
 
   private buildContext(question: string): string {
     const q = question.toLowerCase();
-    const words = q.split(/\s+/).filter((w) => w.length > 3);
+    const relevantFiles: string[] = [];
 
-    // Find files whose path or content contains question keywords
-    const relevant = this.info.files.filter((f) => {
-      const pathMatch = words.some((w) => f.path.toLowerCase().includes(w));
-      const contentMatch = words.some((w) =>
-        f.content.slice(0, 2000).toLowerCase().includes(w)
-      );
-      return pathMatch || contentMatch;
-    });
+    // Find files relevant to the question
+    for (const file of this.info.files) {
+      const pathLower = file.path.toLowerCase();
+      const words = q.split(/\s+/).filter((w) => w.length > 3);
+      if (words.some((w) => pathLower.includes(w))) {
+        relevantFiles.push(file.path);
+      }
+    }
 
-    if (relevant.length === 0) return "";
+    if (relevantFiles.length === 0) return "";
 
-    const snippets = relevant
-      .slice(0, 4)
-      .map((f) => `--- ${f.path} ---\n${f.content.slice(0, 600)}`)
+    const snippets = relevantFiles
+      .slice(0, 3)
+      .map((path) => {
+        const file = this.info.files.find((f) => f.path === path);
+        if (!file) return "";
+        return `--- ${path} ---\n${file.content.slice(0, 500)}`;
+      })
+      .filter(Boolean)
       .join("\n\n");
 
-    return `\nRelevant file snippets:\n${snippets}`;
+    return snippets ? `\nRelevant File Snippets:\n${snippets}` : "";
   }
 
   clearHistory() {

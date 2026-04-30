@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { createProvider, AIProvider } from "../providers";
 import { scanWorkspace, WorkspaceInfo } from "../analyzer/WorkspaceScanner";
-import { buildDependencyGraph, DependencyGraph, getTopFiles } from "../analyzer/GraphBuilder";
+import { buildDependencyGraph, DependencyGraph } from "../analyzer/GraphBuilder";
 import { summarizeRepo, summarizeFiles, QAAgent, RepoSummary, FileSummary } from "../agents";
 import { getWebviewContent } from "./webviewContent";
 
@@ -30,8 +30,11 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
   private workspaceInfo?: WorkspaceInfo;
   private currentGraph?: DependencyGraph;
   private currentSummary?: RepoSummary;
+  private readonly output: vscode.OutputChannel;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.output = vscode.window.createOutputChannel("RepoGraph AI Debug");
+  }
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -40,14 +43,31 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
   ) {
     this.view = webviewView;
     webviewView.webview.options = { enableScripts: true };
-    webviewView.webview.html = getWebviewContent();
+    const cspSource = webviewView.webview.cspSource;
+    
+    // Build icon URIs for webview
+    const iconUris: Record<string, string> = {};
+    const iconNames = [
+      'local-workspace.svg', 'analyze-workspace.svg', 'graph-empty.svg', 
+      'summary-empty.svg', 'qa-empty.svg', 'open-file.svg', 
+      'imports.svg', 'used-by.svg', 'language.svg', 'user.svg', 'ai.svg'
+    ];
+    for (const name of iconNames) {
+      iconUris[name] = webviewView.webview.asWebviewUri(
+        vscode.Uri.joinPath(this.context.extensionUri, 'public', name)
+      ).toString();
+    }
+    
+    webviewView.webview.html = getWebviewContent({ cspSource, iconUris });
 
     void this.loadSavedSettings();
     void this.restoreHistory();
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       try {
+        this.logDebug("<- webview", msg?.type ?? "unknown", msg?.payload);
         switch (msg.type) {
+          case "debug":           this.logDebug("webview-debug", "event", msg.payload); break;
           case "saveProvider":    await this.handleSaveProvider(msg.payload); break;
           case "analyzeLocal":    await this.handleAnalyzeLocal(); break;
           case "askQuestion":     await this.handleQuestion(msg.payload); break;
@@ -62,6 +82,17 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
         this.post({ type: "error", payload: { message } });
       }
     });
+  }
+
+  private logDebug(direction: string, type: string, payload?: unknown) {
+    const stamp = new Date().toISOString();
+    let payloadText = "";
+    try {
+      if (payload !== undefined) payloadText = ` ${JSON.stringify(payload)}`;
+    } catch {
+      payloadText = " [payload-unserializable]";
+    }
+    this.output.appendLine(`[${stamp}] ${direction} ${type}${payloadText}`);
   }
 
   // ── Settings ───────────────────────────────────────────────────────────
@@ -124,8 +155,8 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
   }
 
   private async saveHistory(records: AnalysisRecord[]) {
-    // Keep latest 10 analyses per workspace
-    const trimmed = records.slice(0, 10);
+    // Keep latest 20 analyses, sorted by timestamp descending
+    const trimmed = records.slice(0, 20);
     await this.context.workspaceState.update("repograph.history", trimmed);
   }
 
@@ -226,8 +257,7 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
 
     // Step 4: file summaries
     this.post({ type: "progress", payload: { step: 4, message: "Summarizing key files..." } });
-    const topNodes = getTopFiles(graph, 30);
-    const fileSummaries = await summarizeFiles(this.provider, topNodes, wsInfo, (done, total) => {
+    const fileSummaries = await summarizeFiles(this.provider, graph.nodes, wsInfo, (done, total) => {
       this.post({ type: "progress", payload: { step: 4, message: `Summarizing files ${done}/${total}...` } });
     });
     this.post({ type: "fileSummariesReady", payload: fileSummaries });
@@ -235,7 +265,7 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
     // QA agent
     this.qaAgent = new QAAgent(this.provider, wsInfo, graph, summary);
 
-    // Persist to history
+    // Persist to history (keep all runs; don't filter by repoName)
     const now = Date.now();
     const label = `${wsInfo.name} — ${new Date(now).toLocaleString("en-IN", {
       day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
@@ -251,7 +281,7 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
       fileSummaries,
     };
 
-    const existing = this.getHistory().filter((r) => r.repoName !== wsInfo.name);
+    const existing = this.getHistory();
     await this.saveHistory([record, ...existing]);
 
     this.post({
@@ -312,6 +342,8 @@ export class RepoGraphPanel implements vscode.WebviewViewProvider {
   }
 
   private post(message: object) {
+    const msg = message as { type?: string; payload?: unknown };
+    this.logDebug("-> webview", msg.type ?? "unknown", msg.payload);
     this.view?.webview.postMessage(message);
   }
 }

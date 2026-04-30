@@ -14,8 +14,7 @@ export interface AIProvider {
   chat(messages: Message[], systemPrompt?: string): Promise<string>;
 }
 
-// ── Groq ───────────────────────────────────────────────────────────────────
-
+// ─── GROQ ────────────────────────────────────────────────────────────────────
 export class GroqProvider implements AIProvider {
   constructor(private config: ProviderConfig) {}
 
@@ -40,16 +39,15 @@ export class GroqProvider implements AIProvider {
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Groq API error ${res.status}: ${err}`);
+      throw new Error(`Groq API error: ${err}`);
     }
 
-    const data = (await res.json()) as any;
+    const data = await res.json() as any;
     return data.choices[0].message.content;
   }
 }
 
-// ── Ollama (local) ─────────────────────────────────────────────────────────
-
+// ─── OLLAMA (local, free) ────────────────────────────────────────────────────
 export class OllamaProvider implements AIProvider {
   constructor(private config: ProviderConfig) {}
 
@@ -69,14 +67,13 @@ export class OllamaProvider implements AIProvider {
       }),
     });
 
-    if (!res.ok) throw new Error(`Ollama error ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as any;
+    if (!res.ok) throw new Error(`Ollama error: ${await res.text()}`);
+    const data = await res.json() as any;
     return data.message.content;
   }
 }
 
-// ── Gemini ─────────────────────────────────────────────────────────────────
-
+// ─── GEMINI ───────────────────────────────────────────────────────────────────
 export class GeminiProvider implements AIProvider {
   constructor(private config: ProviderConfig) {}
 
@@ -84,6 +81,7 @@ export class GeminiProvider implements AIProvider {
     const model = this.config.model || "gemini-1.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`;
 
+    // Convert messages to Gemini format
     const contents = messages
       .filter((m) => m.role !== "system")
       .map((m) => ({
@@ -102,20 +100,19 @@ export class GeminiProvider implements AIProvider {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as any;
+    if (!res.ok) throw new Error(`Gemini error: ${await res.text()}`);
+    const data = await res.json() as any;
     return data.candidates[0].content.parts[0].text;
   }
 }
 
-// ── Anthropic ──────────────────────────────────────────────────────────────
-
+// ─── ANTHROPIC ────────────────────────────────────────────────────────────────
 export class AnthropicProvider implements AIProvider {
   constructor(private config: ProviderConfig) {}
 
   async chat(messages: Message[], systemPrompt?: string): Promise<string> {
     const body: any = {
-      model: this.config.model || "claude-haiku-4-5-20251001",
+      model: this.config.model || "claude-sonnet-4-5",
       max_tokens: 2048,
       messages: messages.filter((m) => m.role !== "system"),
     };
@@ -131,14 +128,13 @@ export class AnthropicProvider implements AIProvider {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as any;
+    if (!res.ok) throw new Error(`Anthropic error: ${await res.text()}`);
+    const data = await res.json() as any;
     return data.content[0].text;
   }
 }
 
-// ── OpenAI ─────────────────────────────────────────────────────────────────
-
+// ─── OPENAI ───────────────────────────────────────────────────────────────────
 export class OpenAIProvider implements AIProvider {
   constructor(private config: ProviderConfig) {}
 
@@ -161,14 +157,13 @@ export class OpenAIProvider implements AIProvider {
       }),
     });
 
-    if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as any;
+    if (!res.ok) throw new Error(`OpenAI error: ${await res.text()}`);
+    const data = await res.json() as any;
     return data.choices[0].message.content;
   }
 }
 
-// ── Factory ────────────────────────────────────────────────────────────────
-
+// ─── FACTORY ──────────────────────────────────────────────────────────────────
 export function createProvider(name: string, config: ProviderConfig): AIProvider {
   switch (name) {
     case "groq":      return new GroqProvider(config);
@@ -176,6 +171,6 @@ export function createProvider(name: string, config: ProviderConfig): AIProvider
     case "gemini":    return new GeminiProvider(config);
     case "anthropic": return new AnthropicProvider(config);
     case "openai":    return new OpenAIProvider(config);
-    default: throw new Error(`Unknown provider: ${name}`);
+    default:          throw new Error(`Unknown provider: ${name}`);
   }
 }
