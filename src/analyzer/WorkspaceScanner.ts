@@ -133,7 +133,7 @@ export async function scanWorkspace(
     const rel = path.relative(rootPath, uri.fsPath);
     const parts = rel.split(path.sep);
     // ensure no skipped directory in path
-    if (parts.slice(0, -1).some((p) => shouldSkipDir(p))) return false;
+    if (parts.slice(0, -1).some((p: string) => shouldSkipDir(p))) return false;
 
     return true;
   });
