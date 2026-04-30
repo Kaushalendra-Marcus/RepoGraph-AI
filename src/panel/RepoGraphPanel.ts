@@ -1,280 +1,317 @@
 import * as vscode from "vscode";
 import { createProvider, AIProvider } from "../providers";
-import { fetchRepo, RepoInfo } from "../analyzer/RepoFetcher";
 import { scanWorkspace, WorkspaceInfo } from "../analyzer/WorkspaceScanner";
-import { buildDependencyGraph, DependencyGraph, getTopFiles, GraphNode } from "../analyzer/GraphBuilder";
+import { buildDependencyGraph, DependencyGraph, getTopFiles } from "../analyzer/GraphBuilder";
 import { summarizeRepo, summarizeFiles, QAAgent, RepoSummary, FileSummary } from "../agents";
 import { getWebviewContent } from "./webviewContent";
 
 interface ProviderSettings {
-  name: string; apiKey?: string; model?: string; baseUrl?: string;
+  name: string;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
 }
 
-interface AnalysisState {
+export interface AnalysisRecord {
+  id: string;
+  label: string;          // e.g. "my-project — 2 Jun 14:32"
+  timestamp: number;
   repoName: string;
-  sourceInfo: SourceInfo;
-  repoInfo: RepoInfo;
   graph: DependencyGraph;
   summary: RepoSummary;
   fileSummaries: FileSummary[];
+  // We do not persist full file contents — workspace can be re-read
 }
-
-type SourceInfo = (RepoInfo | WorkspaceInfo) & { files: Array<{ path: string; content: string; size: number; language: string; absPath?: string }> };
 
 export class RepoGraphPanel implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private provider?: AIProvider;
   private qaAgent?: QAAgent;
-  private sourceInfo?: SourceInfo;
-  private repoInfo?: RepoInfo;
-  private graph?: DependencyGraph;
-  private summary?: RepoSummary;
-  private cachedAnalysis?: AnalysisState;
+  private workspaceInfo?: WorkspaceInfo;
+  private currentGraph?: DependencyGraph;
+  private currentSummary?: RepoSummary;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
-  resolveWebviewView(webviewView: vscode.WebviewView, _ctx: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken) {
+  resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _ctx: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ) {
     this.view = webviewView;
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "public")],
-    };
-    const iconFiles: Record<string, string> = {
-      "local-workspace.svg": "local-workspace.svg.svg",
-      "github-url.svg": "github-url.svg.svg",
-      "analyze-workspace.svg": "analyze-workspace.svg.svg",
-      "analyze-github.svg": "analyze-github.svg.svg",
-      "graph-empty.svg": "graph-empty.svg.svg",
-      "summary-empty.svg": "summary-empty.svg.svg",
-      "qa-empty.svg": "qa-empty.svg.svg",
-      "imports.svg": "imports.svg.svg",
-      "used-by.svg": "used-by.svg.svg",
-      "language.svg": "language.svg.svg",
-      "open-file.svg": "open-file.svg.svg",
-    };
-    const iconUris = Object.fromEntries(
-      Object.entries(iconFiles).map(([name, file]) => [
-        name,
-        webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "public", file)).toString(),
-      ])
-    );
-    webviewView.webview.html = getWebviewContent({
-      cspSource: webviewView.webview.cspSource,
-      iconUris,
-    });
-    void (async () => {
-      await this.loadSavedSettings();
-      await this.restoreCachedAnalysis();
-    })();
+    webviewView.webview.options = { enableScripts: true };
+    webviewView.webview.html = getWebviewContent();
+
+    void this.loadSavedSettings();
+    void this.restoreHistory();
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       try {
         switch (msg.type) {
           case "saveProvider":    await this.handleSaveProvider(msg.payload); break;
-          case "analyzeGithub":  await this.handleAnalyzeGithub(msg.payload); break;
-          case "analyzeLocal":   await this.handleAnalyzeLocal(); break;
-          case "askQuestion":    await this.handleQuestion(msg.payload); break;
-          case "openFile":       await this.handleOpenFile(msg.payload); break;
-          case "clearChat":      this.qaAgent?.clearHistory(); break;
-          case "getSettings":    this.loadSavedSettings(); break;
-          default:               break;
+          case "analyzeLocal":    await this.handleAnalyzeLocal(); break;
+          case "askQuestion":     await this.handleQuestion(msg.payload); break;
+          case "openFile":        await this.handleOpenFile(msg.payload); break;
+          case "clearChat":       this.qaAgent?.clearHistory(); break;
+          case "getSettings":     await this.loadSavedSettings(); break;
+          case "loadAnalysis":    await this.handleLoadAnalysis(msg.payload); break;
+          case "deleteAnalysis":  await this.handleDeleteAnalysis(msg.payload); break;
         }
-      } catch (e: any) {
-        this.post({ type: "error", payload: { message: `Error: ${e.message}` } });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        this.post({ type: "error", payload: { message } });
       }
     });
   }
 
-  // ── SETTINGS ─────────────────────────────────────────────────────────────
+  // ── Settings ───────────────────────────────────────────────────────────
+
   private async handleSaveProvider(payload: ProviderSettings) {
     const { name, apiKey, model, baseUrl } = payload;
     if (apiKey) await this.context.secrets.store(`repograph.${name}.apiKey`, apiKey);
     await this.context.globalState.update("repograph.activeProvider", name);
     await this.context.globalState.update(`repograph.${name}.model`, model);
     if (baseUrl) await this.context.globalState.update(`repograph.${name}.baseUrl`, baseUrl);
+
     try {
-      const key = apiKey || await this.context.secrets.get(`repograph.${name}.apiKey`);
+      const key = apiKey || (await this.context.secrets.get(`repograph.${name}.apiKey`));
       this.provider = createProvider(name, { name, apiKey: key, model, baseUrl });
-      if (this.repoInfo && this.graph && this.summary) {
-        this.qaAgent = new QAAgent(this.provider, this.repoInfo, this.graph, this.summary);
+      // Re-init QA agent with new provider if analysis exists
+      if (this.workspaceInfo && this.currentGraph && this.currentSummary) {
+        this.qaAgent = new QAAgent(
+          this.provider,
+          this.workspaceInfo,
+          this.currentGraph,
+          this.currentSummary
+        );
       }
       this.post({ type: "providerSaved", payload: { name, success: true } });
-    } catch (e: any) {
-      this.post({ type: "error", payload: { message: e.message } });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.post({ type: "error", payload: { message } });
     }
   }
 
   private async loadSavedSettings() {
     const name = this.context.globalState.get<string>("repograph.activeProvider");
-    if (!name) { return; }
+    const hasWorkspace = !!(vscode.workspace.workspaceFolders?.length);
+    const wsName = vscode.workspace.workspaceFolders?.[0]?.name;
+
+    this.post({ type: "workspaceStatus", payload: { hasWorkspace, name: wsName } });
+
+    if (!name) return;
+
     const apiKey = await this.context.secrets.get(`repograph.${name}.apiKey`);
     const model = this.context.globalState.get<string>(`repograph.${name}.model`);
     const baseUrl = this.context.globalState.get<string>(`repograph.${name}.baseUrl`);
-    try { this.provider = createProvider(name, { name, apiKey, model, baseUrl }); } catch {}
-    this.post({ type: "settingsLoaded", payload: { providerName: name, model, baseUrl, hasKey: !!apiKey } });
 
-    // Tell UI if workspace is available
-    const hasWorkspace = !!(vscode.workspace.workspaceFolders?.length);
-    this.post({ type: "workspaceStatus", payload: { hasWorkspace, name: vscode.workspace.workspaceFolders?.[0]?.name } });
-  }
-
-  private async restoreCachedAnalysis() {
-    const cached = this.context.workspaceState.get<AnalysisState>("repograph.lastAnalysis");
-    if (!cached) {
-      return;
-    }
-
-    this.cachedAnalysis = cached;
-    this.sourceInfo = cached.sourceInfo;
-    this.repoInfo = cached.repoInfo;
-    this.graph = cached.graph;
-    this.summary = cached.summary;
-
-    if (this.provider) {
-      this.qaAgent = new QAAgent(this.provider, cached.repoInfo, cached.graph, cached.summary);
+    try {
+      this.provider = createProvider(name, { name, apiKey, model, baseUrl });
+    } catch {
+      // provider creation can fail if key missing — that is fine at startup
     }
 
     this.post({
-      type: "restoreAnalysis",
+      type: "settingsLoaded",
+      payload: { providerName: name, model, baseUrl, hasKey: !!apiKey },
+    });
+  }
+
+  // ── History management ─────────────────────────────────────────────────
+
+  private getHistory(): AnalysisRecord[] {
+    return this.context.workspaceState.get<AnalysisRecord[]>("repograph.history", []);
+  }
+
+  private async saveHistory(records: AnalysisRecord[]) {
+    // Keep latest 10 analyses per workspace
+    const trimmed = records.slice(0, 10);
+    await this.context.workspaceState.update("repograph.history", trimmed);
+  }
+
+  private async restoreHistory() {
+    const records = this.getHistory();
+    if (records.length === 0) return;
+
+    // Send history list to UI
+    this.post({
+      type: "historyLoaded",
+      payload: { records: records.map(this.recordMeta) },
+    });
+
+    // Auto-restore latest analysis into state (no need to re-render graph yet)
+    const latest = records[0];
+    this.currentGraph = latest.graph;
+    this.currentSummary = latest.summary;
+  }
+
+  private recordMeta(r: AnalysisRecord) {
+    return { id: r.id, label: r.label, timestamp: r.timestamp, repoName: r.repoName };
+  }
+
+  private async handleLoadAnalysis(payload: { id: string }) {
+    const records = this.getHistory();
+    const record = records.find((r) => r.id === payload.id);
+    if (!record) {
+      this.post({ type: "error", payload: { message: "Analysis record not found." } });
+      return;
+    }
+
+    this.currentGraph = record.graph;
+    this.currentSummary = record.summary;
+
+    // Re-init QA if provider available — workspace info may not be loaded
+    // so QA will work with summary context only
+    if (this.provider && this.workspaceInfo) {
+      this.qaAgent = new QAAgent(
+        this.provider,
+        this.workspaceInfo,
+        record.graph,
+        record.summary
+      );
+    }
+
+    this.post({
+      type: "analysisRestored",
       payload: {
-        repoName: cached.repoName,
-        graph: cached.graph,
-        summary: cached.summary,
-        fileSummaries: cached.fileSummaries,
+        repoName: record.repoName,
+        graph: record.graph,
+        summary: record.summary,
+        fileSummaries: record.fileSummaries,
         hasQA: !!this.qaAgent,
       },
     });
   }
 
-  // ── LOCAL WORKSPACE ───────────────────────────────────────────────────────
+  private async handleDeleteAnalysis(payload: { id: string }) {
+    const records = this.getHistory().filter((r) => r.id !== payload.id);
+    await this.saveHistory(records);
+    this.post({
+      type: "historyLoaded",
+      payload: { records: records.map(this.recordMeta) },
+    });
+  }
+
+  // ── Analyze local workspace ────────────────────────────────────────────
+
   private async handleAnalyzeLocal() {
     if (!this.provider) {
-      this.post({ type: "error", payload: { message: "Please configure an AI provider first (Settings tab)" } });
-      return;
-    }
-    try {
-      this.post({ type: "progress", payload: { step: 1, message: "Scanning workspace files..." } });
-      const wsInfo = await scanWorkspace((msg) => {
-        this.post({ type: "progress", payload: { step: 1, message: msg } });
+      this.post({
+        type: "error",
+        payload: { message: "Configure an AI provider in Settings first." },
       });
-      if (!wsInfo) throw new Error("No workspace found");
-      await this.runAnalysis(wsInfo, wsInfo.name);
-    } catch (e: any) {
-      this.post({ type: "error", payload: { message: e.message } });
-    }
-  }
-
-  // ── GITHUB ────────────────────────────────────────────────────────────────
-  private async handleAnalyzeGithub(payload: { url: string; githubToken?: string }) {
-    if (!this.provider) {
-      this.post({ type: "error", payload: { message: "Please configure an AI provider first (Settings tab)" } });
       return;
     }
-    try {
-      this.post({ type: "progress", payload: { step: 1, message: "Fetching repository..." } });
-      const repoInfo = await fetchRepo(payload.url, payload.githubToken, (msg) => {
-        this.post({ type: "progress", payload: { step: 1, message: msg } });
-      });
-      await this.runAnalysis(repoInfo, `${repoInfo.owner}/${repoInfo.repo}`);
-    } catch (e: any) {
-      this.post({ type: "error", payload: { message: e.message } });
-    }
-  }
 
-  // ── CORE ANALYSIS PIPELINE ────────────────────────────────────────────────
-  private async runAnalysis(info: SourceInfo, repoName: string) {
-    if (!this.provider) {
-      this.post({ type: "error", payload: { message: "AI provider not configured. Please configure a provider in Settings first." } });
-      return;
-    }
-    this.sourceInfo = info;
+    this.post({ type: "progress", payload: { step: 1, message: "Scanning workspace files..." } });
 
-    // Step 2: Build graph
+    const wsInfo = await scanWorkspace((msg) => {
+      this.post({ type: "progress", payload: { step: 1, message: msg } });
+    });
+
+    if (!wsInfo) throw new Error("No workspace found.");
+    this.workspaceInfo = wsInfo;
+
+    // Step 2: dependency graph
     this.post({ type: "progress", payload: { step: 2, message: "Building dependency graph..." } });
-    this.graph = buildDependencyGraph(info.files);
-    this.post({ type: "graphReady", payload: { nodes: this.graph.nodes, edges: this.graph.edges } });
+    const graph = buildDependencyGraph(wsInfo.files);
+    this.currentGraph = graph;
+    this.post({ type: "graphReady", payload: { nodes: graph.nodes, edges: graph.edges } });
 
-    // Step 3: AI Summary
+    // Step 3: repo summary
     this.post({ type: "progress", payload: { step: 3, message: "Generating AI summary..." } });
-    const fakeRepoInfo = {
-      owner: repoName.split("/")[0] || repoName,
-      repo: repoName.split("/")[1] || repoName,
-      description: "",
-      stars: 0,
-      language: info.files[0]?.language || "",
-      files: info.files as any,
-      tree: [],
-    };
-    const repoInfo = fakeRepoInfo as RepoInfo;
-    this.repoInfo = repoInfo;
-    this.summary = await summarizeRepo(this.provider, fakeRepoInfo, this.graph);
-    this.post({ type: "summaryReady", payload: this.summary });
+    const summary = await summarizeRepo(this.provider, wsInfo, graph);
+    this.currentSummary = summary;
+    this.post({ type: "summaryReady", payload: summary });
 
-    // Step 4: File summaries
+    // Step 4: file summaries
     this.post({ type: "progress", payload: { step: 4, message: "Summarizing key files..." } });
-    const topNodes = getTopFiles(this.graph, 15);
-    const fileSummaries = await summarizeFiles(this.provider, topNodes, fakeRepoInfo, (done, total) => {
-      this.post({ type: "progress", payload: { step: 4, message: `Summarizing files... ${done}/${total}` } });
+    const topNodes = getTopFiles(graph, 30);
+    const fileSummaries = await summarizeFiles(this.provider, topNodes, wsInfo, (done, total) => {
+      this.post({ type: "progress", payload: { step: 4, message: `Summarizing files ${done}/${total}...` } });
     });
     this.post({ type: "fileSummariesReady", payload: fileSummaries });
 
-    this.cachedAnalysis = {
-      repoName,
-      sourceInfo: info,
-      repoInfo,
-      graph: this.graph,
-      summary: this.summary,
+    // QA agent
+    this.qaAgent = new QAAgent(this.provider, wsInfo, graph, summary);
+
+    // Persist to history
+    const now = Date.now();
+    const label = `${wsInfo.name} — ${new Date(now).toLocaleString("en-IN", {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    })}`;
+
+    const record: AnalysisRecord = {
+      id: `${now}`,
+      label,
+      timestamp: now,
+      repoName: wsInfo.name,
+      graph,
+      summary,
       fileSummaries,
     };
-    await this.context.workspaceState.update("repograph.lastAnalysis", this.cachedAnalysis);
 
-    // Step 5: Q&A ready
-    this.qaAgent = new QAAgent(this.provider, repoInfo, this.graph, this.summary);
-    this.post({ type: "analysisComplete", payload: { repoName } });
+    const existing = this.getHistory().filter((r) => r.repoName !== wsInfo.name);
+    await this.saveHistory([record, ...existing]);
+
+    this.post({
+      type: "historyLoaded",
+      payload: {
+        records: this.getHistory().map(this.recordMeta),
+      },
+    });
+
+    this.post({ type: "analysisComplete", payload: { repoName: wsInfo.name } });
   }
 
-  // ── OPEN FILE ─────────────────────────────────────────────────────────────
+  // ── Open file ──────────────────────────────────────────────────────────
+
   private async handleOpenFile(payload: { path: string }) {
-    if (!this.graph) {
-      this.post({ type: "error", payload: { message: "Please analyze a repository first" } });
-      return;
+    const node = this.currentGraph?.nodes.find((n) => n.path === payload.path);
+
+    let uri: vscode.Uri | undefined;
+
+    if (node?.absPath) {
+      uri = vscode.Uri.file(node.absPath);
+    } else if (vscode.workspace.workspaceFolders?.length) {
+      const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      uri = vscode.Uri.file(`${root}/${payload.path}`);
     }
-    // Try absolute path first (local), then search workspace
+
+    if (!uri) return;
+
     try {
-      const node = this.graph.nodes.find((n) => n.path === payload.path);
-      let uri: vscode.Uri | undefined;
-
-      if (node?.absPath) {
-        uri = vscode.Uri.file(node.absPath);
-      } else if (vscode.workspace.workspaceFolders?.length) {
-        const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
-        const normalizedPath = payload.path.split("/").filter(Boolean);
-        uri = vscode.Uri.joinPath(vscode.Uri.file(root), ...normalizedPath);
-      }
-
-      if (uri) {
-        const doc = await vscode.workspace.openTextDocument(uri);
-        await vscode.window.showTextDocument(doc, { preview: false });
-      }
-    } catch (e: any) {
-      this.post({ type: "error", payload: { message: `Cannot open file: ${e.message}` } });
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc, { preview: false });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.post({ type: "error", payload: { message: `Cannot open: ${message}` } });
     }
   }
 
-  // ── Q&A ──────────────────────────────────────────────────────────────────
+  // ── Q&A ───────────────────────────────────────────────────────────────
+
   private async handleQuestion(payload: { question: string }) {
     if (!this.qaAgent) {
-      this.post({ type: "error", payload: { message: "Please analyze a repository first" } });
+      this.post({
+        type: "answer",
+        payload: { answer: "Please analyze the workspace first before asking questions." },
+      });
       return;
     }
+
+    this.post({ type: "thinking", payload: {} });
+
     try {
-      this.post({ type: "thinking", payload: {} });
       const answer = await this.qaAgent.ask(payload.question);
-      this.post({ type: "answer", payload: { question: payload.question, answer } });
-    } catch (e: any) {
-      this.post({ type: "error", payload: { message: e.message } });
+      this.post({ type: "answer", payload: { answer } });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.post({ type: "answer", payload: { answer: `Error: ${message}` } });
     }
   }
 
-  private post(message: object) { this.view?.webview.postMessage(message); }
+  private post(message: object) {
+    this.view?.webview.postMessage(message);
+  }
 }
