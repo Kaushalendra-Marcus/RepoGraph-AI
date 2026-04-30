@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="/repograph-ai.png" alt="RepoGraph AI" width="100" height="100">
+<img src="./public/repograph-ai.png" alt="RepoGraph AI" width="100" height="100">
 
 # RepoGraph AI
 
