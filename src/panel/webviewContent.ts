@@ -104,21 +104,20 @@ input:focus,select:focus,textarea:focus{
 .btn-block{width:100%;justify-content:center}
 .btn-danger{
   background:rgba(244,71,71,.15);
-  border:1px solid rgba(244,71,71,.3);
-  color:#f44747;
-  font-weight:500;
-}
-.btn-danger:hover{background:rgba(244,71,71,.25);opacity:1}
+    <button class="tab active" data-tab="analyze">Analyze</button>
+    <button class="tab" data-tab="graph">Graph</button>
+    <button class="tab" data-tab="summary">Summary</button>
+    <button class="tab" data-tab="qa">Q&amp;A</button>
+    <button class="tab" data-tab="settings">Settings</button>
 
 /* ── Cards / Alerts ─────────────────────────────────────────────── */
 .card{
   background:var(--vscode-sideBar-background);
   border:1px solid var(--vscode-panel-border);
-  border-radius:5px;
-  padding:9px 11px;
-  margin-bottom:8px;
-}
-.card-title{font-size:11.5px;font-weight:600;margin-bottom:4px}
+    document.querySelectorAll('[data-tab]').forEach((node) => {
+      const tab = node.getAttribute('data-tab');
+      if (!tab) return;
+      node.addEventListener('click', () => showTab(tab));
 .card-body{font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.65}
 
 .alert{
@@ -126,13 +125,13 @@ input:focus,select:focus,textarea:focus{
   border-radius:3px;
   font-size:11px;
   margin-bottom:8px;
-  border-left:3px solid;
+      graphSearch(event.target.value);
   line-height:1.5;
 }
 .alert-error{background:rgba(244,71,71,.08);border-color:#f44747;color:#f44747}
 .alert-success{background:rgba(78,201,176,.08);border-color:#4ec9b0;color:#4ec9b0}
-.alert-info{background:rgba(86,156,214,.08);border-color:#569cd6;color:#569cd6}
-
+    chatInput?.addEventListener('input', (event) => {
+      autoResize(event.target);
 .badge{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:10px}
 .badge-free{background:rgba(78,201,176,.12);color:#4ec9b0}
 .badge-paid{background:rgba(220,220,170,.12);color:#dcdcaa}
@@ -145,17 +144,17 @@ input:focus,select:focus,textarea:focus{
 .progress-msg{font-size:11px;color:var(--vscode-descriptionForeground)}
 .progress-steps{display:flex;justify-content:space-between;font-size:9.5px;margin-top:3px}
 .progress-steps span{color:var(--vscode-panel-border)}
-.progress-steps span.done{color:#4ec9b0}
+    document.getElementById('history-list').innerHTML = records.map(r => {
 .progress-steps span.active{color:var(--vscode-button-background)}
 
 /* ── History list ───────────────────────────────────────────────── */
-.history-header{
+      return \`<div class="history-item" data-id="\${r.id}">
   font-size:10px;
   text-transform:uppercase;
   letter-spacing:.08em;
   color:var(--vscode-descriptionForeground);
   margin:14px 0 6px;
-  font-weight:600;
+        <button class="history-del" data-id="\${r.id}" title="Delete">
 }
 .history-item{
   display:flex;
@@ -164,8 +163,8 @@ input:focus,select:focus,textarea:focus{
   padding:7px 9px;
   background:var(--vscode-sideBar-background);
   border:1px solid var(--vscode-panel-border);
-  border-radius:4px;
-  margin-bottom:5px;
+    document.getElementById('s-entries').innerHTML = (s.entryPoints||[]).map(p =>
+      \`<div style="padding:2px 0;cursor:pointer;color:#569cd6" data-path="\${p}">\${p}</div>\`
   cursor:pointer;
   transition:border-color .15s;
 }
@@ -377,11 +376,11 @@ input:focus,select:focus,textarea:focus{
 <body>
 
 <div class="tabs">
-  <button class="tab active" onclick="showTab('analyze')">Analyze</button>
-  <button class="tab" onclick="showTab('graph')">Graph</button>
-  <button class="tab" onclick="showTab('summary')">Summary</button>
-  <button class="tab" onclick="showTab('qa')">Q&amp;A</button>
-  <button class="tab" onclick="showTab('settings')">Settings</button>
+  <button class="tab active" data-tab="analyze">Analyze</button>
+  <button class="tab" data-tab="graph">Graph</button>
+  <button class="tab" data-tab="summary">Summary</button>
+  <button class="tab" data-tab="qa">Q&amp;A</button>
+  <button class="tab" data-tab="settings">Settings</button>
 </div>
 
 <!-- ═══════════════════════════════════
@@ -709,27 +708,67 @@ let vscode;
 try { vscode = acquireVsCodeApi(); } catch(e) {}
 function post(msg) { vscode?.postMessage(msg); }
 
-function bindOnClickFallback() {
-  document.querySelectorAll('[onclick]').forEach((node) => {
-    const code = node.getAttribute('onclick');
-    if (!code) return;
-    node.setAttribute('data-onclick', code);
-    node.removeAttribute('onclick');
+let interactionsWired = false;
+
+function wireInteractions() {
+  if (interactionsWired) return;
+  interactionsWired = true;
+
+  document.querySelectorAll('[data-tab]').forEach((node) => {
+    const tab = node.getAttribute('data-tab');
+    if (!tab) return;
+    node.addEventListener('click', () => showTab(tab));
   });
 
-  document.addEventListener('click', (event) => {
-    const target = event.target instanceof Element ? event.target.closest('[data-onclick]') : null;
-    if (!target) return;
-    const code = target.getAttribute('data-onclick');
-    if (!code) return;
-    event.preventDefault();
-    try {
-      // Execute the original inline handler body in page scope.
-      new Function('event', code).call(target, event);
-    } catch (error) {
-      console.error('onclick fallback failed', error);
-    }
-  }, true);
+  const analyzeBtn = document.getElementById('local-analyze-btn');
+  analyzeBtn?.addEventListener('click', analyzeLocal);
+
+  document.querySelectorAll('.zoom-btn').forEach((node, index) => {
+    if (index === 0) node.addEventListener('click', () => zoom(1.2));
+    if (index === 1) node.addEventListener('click', () => zoom(0.83));
+    if (index === 2) node.addEventListener('click', fitView);
+  });
+
+  const graphSearchInput = document.getElementById('graph-search');
+  graphSearchInput?.addEventListener('input', (event) => {
+    graphSearch(event.target.value);
+  });
+
+  const chatInput = document.getElementById('chat-input');
+  chatInput?.addEventListener('keydown', chatKey);
+  chatInput?.addEventListener('input', (event) => {
+    autoResize(event.target);
+  });
+
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn?.addEventListener('click', sendQ);
+
+  document.querySelectorAll('.qq').forEach((node) => {
+    const text = node.textContent?.trim() || '';
+    node.addEventListener('click', () => askQuick(text));
+  });
+
+  document.getElementById('graph-search')?.addEventListener('input', (event) => {
+    graphSearch(event.target.value);
+  });
+
+  document.querySelectorAll('.provider-card').forEach((card) => {
+    const name = card.id.replace('pc-', '');
+    card.addEventListener('click', () => selProv(name));
+  });
+
+  ['groq', 'gemini', 'anthropic', 'openai'].forEach((name) => {
+    document.getElementById('model-' + name)?.addEventListener('change', () => toggleCustomModel(name));
+    document.getElementById('custom-model-' + name)?.addEventListener('input', () => toggleCustomModel(name));
+  });
+
+  document.getElementById('node-detail-close')?.addEventListener('click', closeNodeDetail);
+
+  document.querySelectorAll('.provider-fields .btn.btn-sm').forEach((node) => {
+    const card = node.closest('.provider-card');
+    const name = card?.id?.replace('pc-', '');
+    if (name) node.addEventListener('click', () => saveProv(name));
+  });
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1535,9 +1574,11 @@ window.addEventListener('message', e => {
    INIT
 ═══════════════════════════════════════════════════════ */
 window.addEventListener('load', () => {
-  bindOnClickFallback();
+  wireInteractions();
   post({ type: 'getSettings' });
 });
+
+wireInteractions();
 </script>
 </body>
 </html>`;
