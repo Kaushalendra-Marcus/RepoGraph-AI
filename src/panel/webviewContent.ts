@@ -709,6 +709,29 @@ let vscode;
 try { vscode = acquireVsCodeApi(); } catch(e) {}
 function post(msg) { vscode?.postMessage(msg); }
 
+function bindOnClickFallback() {
+  document.querySelectorAll('[onclick]').forEach((node) => {
+    const code = node.getAttribute('onclick');
+    if (!code) return;
+    node.setAttribute('data-onclick', code);
+    node.removeAttribute('onclick');
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target.closest('[data-onclick]') : null;
+    if (!target) return;
+    const code = target.getAttribute('data-onclick');
+    if (!code) return;
+    event.preventDefault();
+    try {
+      // Execute the original inline handler body in page scope.
+      new Function('event', code).call(target, event);
+    } catch (error) {
+      console.error('onclick fallback failed', error);
+    }
+  }, true);
+}
+
 /* ═══════════════════════════════════════════════════════
    TABS
 ═══════════════════════════════════════════════════════ */
@@ -1512,6 +1535,7 @@ window.addEventListener('message', e => {
    INIT
 ═══════════════════════════════════════════════════════ */
 window.addEventListener('load', () => {
+  bindOnClickFallback();
   post({ type: 'getSettings' });
 });
 </script>
