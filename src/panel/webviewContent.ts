@@ -710,24 +710,81 @@ function post(msg) { vscode?.postMessage(msg); }
 
 let interactionsWired = false;
 
+function handleDelegatedClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) return;
+
+  const tab = target.closest('[data-tab]');
+  if (tab) {
+    const name = tab.getAttribute('data-tab');
+    if (name) showTab(name);
+    return;
+  }
+
+  const analyzeButton = target.closest('#local-analyze-btn');
+  if (analyzeButton) { analyzeLocal(); return; }
+
+  const zoomButton = target.closest('.zoom-btn');
+  if (zoomButton) {
+    const buttons = Array.from(document.querySelectorAll('.zoom-btn'));
+    const index = buttons.indexOf(zoomButton);
+    if (index === 0) zoom(1.2);
+    if (index === 1) zoom(0.83);
+    if (index === 2) fitView();
+    return;
+  }
+
+  const quickQuestion = target.closest('.qq');
+  if (quickQuestion) { askQuick(quickQuestion.textContent?.trim() || ''); return; }
+
+  const sendButton = target.closest('#send-btn');
+  if (sendButton) { sendQ(); return; }
+
+  const providerCard = target.closest('.provider-card');
+  if (providerCard?.id) { selProv(providerCard.id.replace('pc-', '')); return; }
+
+  const saveButton = target.closest('.provider-fields .btn.btn-sm');
+  if (saveButton) {
+    const card = saveButton.closest('.provider-card');
+    const name = card?.id?.replace('pc-', '');
+    if (name) saveProv(name);
+    return;
+  }
+
+  const closeButton = target.closest('#node-detail-close');
+  if (closeButton) { closeNodeDetail(); return; }
+
+  const historyDelete = target.closest('.history-del');
+  if (historyDelete) {
+    const id = historyDelete.getAttribute('data-id');
+    if (id) deleteAnalysis(event, id);
+    return;
+  }
+
+  const historyItem = target.closest('.history-item');
+  if (historyItem) {
+    const id = historyItem.getAttribute('data-id');
+    if (id) loadAnalysis(id);
+    return;
+  }
+
+  const detailChip = target.closest('.detail-chip');
+  if (detailChip) {
+    const id = detailChip.getAttribute('data-id');
+    if (id) selectNodeById(id);
+    return;
+  }
+
+  const openFileTarget = target.closest('.open-file-btn, .file-card, #s-entries [data-path]');
+  if (openFileTarget) {
+    const path = openFileTarget.getAttribute('data-path');
+    if (path) openFile(path);
+  }
+}
+
 function wireInteractions() {
   if (interactionsWired) return;
   interactionsWired = true;
-
-  document.querySelectorAll('[data-tab]').forEach((node) => {
-    const tab = node.getAttribute('data-tab');
-    if (!tab) return;
-    node.addEventListener('click', () => showTab(tab));
-  });
-
-  const analyzeBtn = document.getElementById('local-analyze-btn');
-  analyzeBtn?.addEventListener('click', analyzeLocal);
-
-  document.querySelectorAll('.zoom-btn').forEach((node, index) => {
-    if (index === 0) node.addEventListener('click', () => zoom(1.2));
-    if (index === 1) node.addEventListener('click', () => zoom(0.83));
-    if (index === 2) node.addEventListener('click', fitView);
-  });
 
   const graphSearchInput = document.getElementById('graph-search');
   graphSearchInput?.addEventListener('input', (event) => {
@@ -743,33 +800,13 @@ function wireInteractions() {
   const sendBtn = document.getElementById('send-btn');
   sendBtn?.addEventListener('click', sendQ);
 
-  document.querySelectorAll('.qq').forEach((node) => {
-    const text = node.textContent?.trim() || '';
-    node.addEventListener('click', () => askQuick(text));
-  });
-
-  document.getElementById('graph-search')?.addEventListener('input', (event) => {
-    graphSearch(event.target.value);
-  });
-
-  document.querySelectorAll('.provider-card').forEach((card) => {
-    const name = card.id.replace('pc-', '');
-    card.addEventListener('click', () => selProv(name));
-  });
-
   ['groq', 'gemini', 'anthropic', 'openai'].forEach((name) => {
     document.getElementById('model-' + name)?.addEventListener('change', () => toggleCustomModel(name));
     document.getElementById('custom-model-' + name)?.addEventListener('input', () => toggleCustomModel(name));
   });
-
-  document.getElementById('node-detail-close')?.addEventListener('click', closeNodeDetail);
-
-  document.querySelectorAll('.provider-fields .btn.btn-sm').forEach((node) => {
-    const card = node.closest('.provider-card');
-    const name = card?.id?.replace('pc-', '');
-    if (name) node.addEventListener('click', () => saveProv(name));
-  });
 }
+
+document.addEventListener('click', handleDelegatedClick, true);
 
 /* ═══════════════════════════════════════════════════════
    TABS
@@ -832,13 +869,13 @@ function renderHistory(records) {
     const date = new Date(r.timestamp).toLocaleString('en-IN', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
     });
-    return \`<div class="history-item" onclick="loadAnalysis('\${r.id}')">
+    return \`<div class="history-item" data-id="\${r.id}">
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0;opacity:.6">
         <circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/>
       </svg>
       <div class="history-item-label" title="\${r.label}">\${r.repoName}</div>
       <div class="history-item-time">\${date}</div>
-      <button class="history-del" onclick="deleteAnalysis(event,'\${r.id}')" title="Delete">
+      <button class="history-del" data-id="\${r.id}" title="Delete">
         <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8">
           <line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/>
         </svg>
@@ -1229,7 +1266,7 @@ function selectNode(node) {
   if (importing.length) {
     html += \`<div class="detail-label">Imports (\${importing.length})</div>\`;
     html += importing.slice(0, 10).map(n =>
-      \`<span class="detail-chip" onclick="selectNodeById('\${n.id}')">\${n.label}</span>\`
+      \`<span class="detail-chip" data-id="\${n.id}">\${n.label}</span>\`
     ).join('');
     if (importing.length > 10) html += \`<span style="font-size:10px;color:var(--vscode-descriptionForeground)"> +\${importing.length-10} more</span>\`;
   }
@@ -1237,7 +1274,7 @@ function selectNode(node) {
   if (usedBy.length) {
     html += \`<div class="detail-label">Used By (\${usedBy.length})</div>\`;
     html += usedBy.slice(0, 10).map(n =>
-      \`<span class="detail-chip" onclick="selectNodeById('\${n.id}')">\${n.label}</span>\`
+      \`<span class="detail-chip" data-id="\${n.id}">\${n.label}</span>\`
     ).join('');
     if (usedBy.length > 10) html += \`<span style="font-size:10px;color:var(--vscode-descriptionForeground)"> +\${usedBy.length-10} more</span>\`;
   }
@@ -1247,7 +1284,7 @@ function selectNode(node) {
     html += node.exports.map(e => \`<span class="detail-chip" style="cursor:default">\${e}</span>\`).join('');
   }
 
-  html += \`<button class="btn btn-secondary open-file-btn" onclick="openFile('\${node.path.replace(/'/g, "\\\\'")}')">
+  html += \`<button class="btn btn-secondary open-file-btn" data-path="\${node.path}">
     Open File
   </button>\`;
 
@@ -1285,7 +1322,7 @@ function showSummary(s, name) {
     \`<div class="card"><div class="card-title">\${m.name}</div><div class="card-body">\${m.description}</div></div>\`
   ).join('');
   document.getElementById('s-entries').innerHTML = (s.entryPoints||[]).map(p =>
-    \`<div style="padding:2px 0;cursor:pointer;color:#569cd6" onclick="openFile('\${p}')">\${p}</div>\`
+    \`<div style="padding:2px 0;cursor:pointer;color:#569cd6" data-path="\${p}">\${p}</div>\`
   ).join('') || '<span style="color:var(--vscode-descriptionForeground)">None detected</span>';
 }
 
@@ -1293,7 +1330,7 @@ function showFileSummaries(files) {
   document.getElementById('s-file-count').textContent = '(' + files.length + ')';
   files.forEach(f => { fileSummaryMap[f.path] = f; });
   document.getElementById('s-files').innerHTML = files.map(f =>
-    \`<div class="file-card" onclick="openFile('\${f.path.replace(/'/g,"\\\\'")}')">
+    \`<div class="file-card" data-path="\${f.path}">
       <div class="file-card-path">\${f.path}</div>
       <div class="file-card-desc">\${f.purpose}</div>
       \${f.exports ? \`<div style="font-size:10px;color:var(--vscode-descriptionForeground);margin-top:3px">Exports: \${f.exports}</div>\` : ''}
