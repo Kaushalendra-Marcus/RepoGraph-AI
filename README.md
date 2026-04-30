@@ -111,7 +111,7 @@ Go to the **Analyze** tab and click **Analyze Workspace**. The extension will sc
 
 | Dependency Graph | File Summary | Q&A |
 |---|---|---|
-| ![Graph](assets/screenshot-graph.png) | ![Summary](assets/screenshot-summary.png) | ![QA](assets/screenshot-qa.png) |
+| ![Graph](./public/assets/screenshot-graph.png) | ![Summary](./public/assets/screenshot-summary.png) | ![QA](./public/assets/screenshot-qa.png) |
 
 ---
 
