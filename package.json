@@ -1,16 +1,38 @@
 {
   "name": "repograph-ai",
   "displayName": "RepoGraph AI",
-  "description": "Understand any codebase instantly. Dependency graphs, AI file summaries, and codebase Q&A — fully local, bring your own key.",
+  "description": "Visualize and understand any codebase instantly with AI-powered dependency graphs, file summaries, and codebase Q&A.",
   "version": "1.0.0",
   "publisher": "kaushalendra",
   "license": "MIT",
-  "icon": "repograph-ai.png",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["AI", "Other"],
-  "keywords": ["ai", "codebase", "graph", "dependency", "analysis"],
-  "activationEvents": [],
+
+  "icon": "public/repograph-ai.png",
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kaushalendra-Marcus/CodeGraph-AI"
+  },
+
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+
+  "categories": [
+    "AI",
+    "Visualization"
+  ],
+
+  "keywords": [
+    "ai",
+    "code graph",
+    "dependency graph",
+    "code visualization",
+    "codebase analysis",
+    "developer tools"
+  ],
+
   "main": "./out/extension.js",
+
   "contributes": {
     "commands": [
       {
@@ -24,7 +46,7 @@
         {
           "id": "repograph",
           "title": "RepoGraph AI",
-          "icon": "assets/icon-mono.svg"
+          "icon": "public/assets/icon.svg"
         }
       ]
     },
@@ -33,18 +55,19 @@
         {
           "type": "webview",
           "id": "repograph.mainView",
-          "name": "RepoGraph AI",
-          "icon": "assets/icon-mono.svg"
+          "name": "RepoGraph AI"
         }
       ]
     }
   },
+
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package"
   },
+
   "devDependencies": {
     "@types/node": "^20.19.39",
     "@types/vscode": "^1.116.0",
