@@ -9,7 +9,7 @@
 A VS Code extension that scans your workspace, maps every file relationship, and gives you AI-powered summaries and a live Q&A — all running on your own API key.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-blue)](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai)
+[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.116.0-blue)](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai)
 [![Open Source](https://img.shields.io/badge/Open%20Source-yes-brightgreen)](https://github.com/your-username/repograph-ai)
 
 [Install from Marketplace](#installation) · [Report a Bug](https://github.com/your-username/repograph-ai/issues) · [Request a Feature](https://github.com/your-username/repograph-ai/issues)
