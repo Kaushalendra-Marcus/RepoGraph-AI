@@ -108,7 +108,6 @@ Go to the **Analyze** tab and click **Analyze Workspace**. The extension will sc
 
 ## Screenshots
 
-> Coming soon — replace with actual screenshots before publishing.
 
 | Dependency Graph | File Summary | Q&A |
 |---|---|---|
