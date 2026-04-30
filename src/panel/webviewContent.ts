@@ -102,13 +102,23 @@ input:focus,select:focus,textarea:focus{
 .btn-secondary:hover{background:var(--vscode-list-hoverBackground);opacity:1}
 .btn-sm{padding:3px 8px;font-size:11px}
 .btn-block{width:100%;justify-content:center}
-.btn-danger{background:rgba(244,71,71,.15)}
+.btn-danger{
+  background:rgba(244,71,71,.15);
+  border:1px solid rgba(244,71,71,.3);
+  color:#f44747;
+  font-weight:500;
+}
+.btn-danger:hover{background:rgba(244,71,71,.25);opacity:1}
 
 /* ── Cards / Alerts ─────────────────────────────────────────────── */
 .card{
   background:var(--vscode-sideBar-background);
   border:1px solid var(--vscode-panel-border);
+  border-radius:5px;
+  padding:9px 11px;
+  margin-bottom:8px;
 }
+.card-title{font-size:11.5px;font-weight:600;margin-bottom:4px}
 .card-body{font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.65}
 
 .alert{
@@ -116,10 +126,13 @@ input:focus,select:focus,textarea:focus{
   border-radius:3px;
   font-size:11px;
   margin-bottom:8px;
+  border-left:3px solid;
   line-height:1.5;
 }
 .alert-error{background:rgba(244,71,71,.08);border-color:#f44747;color:#f44747}
 .alert-success{background:rgba(78,201,176,.08);border-color:#4ec9b0;color:#4ec9b0}
+.alert-info{background:rgba(86,156,214,.08);border-color:#569cd6;color:#569cd6}
+
 .badge{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:10px}
 .badge-free{background:rgba(78,201,176,.12);color:#4ec9b0}
 .badge-paid{background:rgba(220,220,170,.12);color:#dcdcaa}
@@ -132,104 +145,248 @@ input:focus,select:focus,textarea:focus{
 .progress-msg{font-size:11px;color:var(--vscode-descriptionForeground)}
 .progress-steps{display:flex;justify-content:space-between;font-size:9.5px;margin-top:3px}
 .progress-steps span{color:var(--vscode-panel-border)}
+.progress-steps span.done{color:#4ec9b0}
 .progress-steps span.active{color:var(--vscode-button-background)}
 
 /* ── History list ───────────────────────────────────────────────── */
-.history-item{display:flex;align-items:center;gap:6px;padding:7px 9px;background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);cursor:pointer;transition:border-color .15s}
+.history-header{
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--vscode-descriptionForeground);
+  margin:14px 0 6px;
+  font-weight:600;
+}
+.history-item{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 9px;
+  background:var(--vscode-sideBar-background);
+  border:1px solid var(--vscode-panel-border);
+  border-radius:4px;
+  margin-bottom:5px;
+  cursor:pointer;
+  transition:border-color .15s;
+}
 .history-item:hover{border-color:var(--vscode-button-background)}
 .history-item-label{flex:1;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .history-item-time{font-size:10px;color:var(--vscode-descriptionForeground);flex-shrink:0}
-.history-del{width:18px;height:18px;flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--vscode-descriptionForeground);display:flex;align-items:center;justify-content:center;border-radius:3px;opacity:.6}
+.history-del{
+  width:18px;height:18px;flex-shrink:0;
+  background:none;border:none;cursor:pointer;
+  color:var(--vscode-descriptionForeground);
+  display:flex;align-items:center;justify-content:center;
+  border-radius:3px;
+  opacity:.6;
+}
 .history-del:hover{opacity:1;color:#f44747}
 
 /* ── Graph ──────────────────────────────────────────────────────── */
 #graph-wrap{display:flex;flex-direction:column;height:100%;position:relative}
-.graph-toolbar{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0;flex-wrap:wrap}
+
+.graph-toolbar{
+  display:flex;align-items:center;gap:6px;padding:5px 8px;
+  border-bottom:1px solid var(--vscode-panel-border);flex-shrink:0;flex-wrap:wrap;
+}
 .graph-toolbar input{width:120px;flex:0 0 auto;padding:3px 6px;font-size:11px}
+
 .zoom-btns{display:flex;gap:2px}
-.zoom-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);border-radius:3px;cursor:pointer;font-size:13px;color:var(--vscode-editor-foreground);font-family:monospace}
+.zoom-btn{
+  width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+  background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);
+  border-radius:3px;cursor:pointer;font-size:13px;
+  color:var(--vscode-editor-foreground);font-family:monospace;
+}
 .zoom-btn:hover{background:var(--vscode-list-hoverBackground)}
+
 .legend{display:flex;gap:6px;flex-wrap:wrap;flex:1}
 .legend-item{display:flex;align-items:center;gap:3px;font-size:10px;color:var(--vscode-descriptionForeground)}
 .legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
 .graph-stats{font-size:10px;color:var(--vscode-descriptionForeground)}
+
 #graph-canvas-wrap{flex:1;position:relative;overflow:hidden;min-height:0}
 #graph-canvas{position:absolute;top:0;left:0}
 
 /* Node detail panel */
-#node-detail{position:absolute;right:0;top:0;bottom:0;width:200px;background:var(--vscode-sideBar-background);border-left:1px solid var(--vscode-panel-border);font-size:11px;overflow-y:auto;display:none;flex-direction:column}
+#node-detail{
+  position:absolute;right:0;top:0;bottom:0;width:200px;
+  background:var(--vscode-sideBar-background);
+  border-left:1px solid var(--vscode-panel-border);
+  font-size:11px;overflow-y:auto;
+  display:none;flex-direction:column;
+}
 #node-detail.open{display:flex}
-#node-detail-header{padding:8px 10px;border-bottom:1px solid var(--vscode-panel-border);display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
-#node-detail-filename{font-weight:700;font-size:12px;word-break:break-all;font-family:monospace;color:var(--vscode-editor-foreground)}
-#node-detail-close{cursor:pointer;color:var(--vscode-descriptionForeground);flex-shrink:0;background:none;border:none;font-size:14px;line-height:1;padding:0 2px}
+#node-detail-header{
+  padding:8px 10px;border-bottom:1px solid var(--vscode-panel-border);
+  display:flex;align-items:flex-start;justify-content:space-between;gap:6px;
+}
+#node-detail-filename{
+  font-weight:700;font-size:12px;word-break:break-all;
+  font-family:monospace;color:var(--vscode-editor-foreground);
+}
+#node-detail-close{
+  cursor:pointer;color:var(--vscode-descriptionForeground);flex-shrink:0;
+  background:none;border:none;font-size:14px;line-height:1;padding:0 2px;
+}
 #node-detail-body{padding:8px 10px;overflow-y:auto;flex:1}
-.detail-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--vscode-descriptionForeground);margin-top:10px;margin-bottom:4px}
+.detail-label{
+  font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;
+  font-weight:700;color:var(--vscode-descriptionForeground);
+  margin-top:10px;margin-bottom:4px;
+}
 .detail-label:first-child{margin-top:0}
-.detail-chip{display:inline-block;background:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border);border-radius:3px;padding:2px 5px;font-size:10px;font-family:monospace;margin:2px 2px 0 0;cursor:pointer;color:var(--vscode-editor-foreground)}
+.detail-chip{
+  display:inline-block;background:var(--vscode-editor-background);
+  border:1px solid var(--vscode-panel-border);border-radius:3px;
+  padding:2px 5px;font-size:10px;font-family:monospace;
+  margin:2px 2px 0 0;cursor:pointer;color:var(--vscode-editor-foreground);
+}
 .detail-chip:hover{border-color:var(--vscode-button-background)}
-.detail-file-path{font-family:monospace;font-size:10px;color:var(--vscode-descriptionForeground);word-break:break-all;margin-bottom:6px}
+.detail-file-path{
+  font-family:monospace;font-size:10px;
+  color:var(--vscode-descriptionForeground);word-break:break-all;margin-bottom:6px;
+}
 .open-file-btn{margin-top:10px;width:100%;justify-content:center;padding:5px;font-size:11px}
 
 /* Graph empty */
-#graph-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--vscode-descriptionForeground);padding:20px;text-align:center}
+#graph-empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:6px;color:var(--vscode-descriptionForeground);
+  padding:20px;text-align:center;
+}
 .empty-icon{margin:0 auto 6px;opacity:.4}
 .empty-title{font-size:13px;font-weight:600;color:var(--vscode-editor-foreground)}
 .empty-sub{font-size:11px;line-height:1.65;max-width:220px}
 
 /* ── Summary ────────────────────────────────────────────────────── */
-.section-hdr{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--vscode-descriptionForeground);margin:12px 0 6px}
+.section-hdr{
+  font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;
+  font-weight:700;color:var(--vscode-descriptionForeground);
+  margin:12px 0 6px;
+}
 .section-hdr:first-child{margin-top:0}
-.chip{display:inline-block;background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);border-radius:10px;padding:2px 8px;font-size:10.5px;margin:2px 2px 0 0}
-.file-card{background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);border-radius:4px;padding:8px 10px;margin-bottom:6px;cursor:pointer;transition:border-color .15s}
+
+.chip{
+  display:inline-block;
+  background:var(--vscode-sideBar-background);
+  border:1px solid var(--vscode-panel-border);
+  border-radius:10px;padding:2px 8px;font-size:10.5px;margin:2px 2px 0 0;
+}
+
+.file-card{
+  background:var(--vscode-sideBar-background);
+  border:1px solid var(--vscode-panel-border);
+  border-radius:4px;padding:8px 10px;margin-bottom:6px;cursor:pointer;
+  transition:border-color .15s;
+}
 .file-card:hover{border-color:var(--vscode-button-background)}
 .file-card-path{font-family:monospace;font-size:10.5px;color:#569cd6;margin-bottom:3px}
 .file-card-desc{font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.6}
 
 /* ── Q&A ────────────────────────────────────────────────────────── */
-.chat-history{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.chat-history{
+  flex:1;overflow-y:auto;padding:8px;
+  display:flex;flex-direction:column;gap:10px;min-height:0;
+}
 .chat-history::-webkit-scrollbar{width:3px}
 .chat-history::-webkit-scrollbar-thumb{background:var(--vscode-panel-border);border-radius:2px}
+
 .chat-msg{display:flex;gap:8px;align-items:flex-start}
-.av{width:22px;height:22px;flex-shrink:0;margin-top:1px;border-radius:4px;display:flex;align-items:center;justify-content:center}
+
+/* SVG avatar */
+.av{
+  width:22px;height:22px;flex-shrink:0;margin-top:1px;
+  border-radius:4px;display:flex;align-items:center;justify-content:center;
+}
 .av-user{background:rgba(86,156,214,.15)}
 .av-ai{background:rgba(78,201,176,.12)}
-.bubble{background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);border-radius:5px;padding:7px 9px;font-size:11.5px;line-height:1.7;flex:1;white-space:pre-wrap;word-break:break-word}
+
+.bubble{
+  background:var(--vscode-sideBar-background);
+  border:1px solid var(--vscode-panel-border);
+  border-radius:5px;padding:7px 9px;
+  font-size:11.5px;line-height:1.7;flex:1;
+  white-space:pre-wrap;word-break:break-word;
+}
 .bubble.user{background:rgba(86,156,214,.06);border-color:rgba(86,156,214,.2)}
+
+/* Thinking animation */
 .thinking-dots{display:flex;gap:3px;padding:4px 0;align-items:center}
-.thinking-dots span{width:5px;height:5px;border-radius:50%;background:var(--vscode-descriptionForeground);animation:dpulse 1.2s ease-in-out infinite}
+.thinking-dots span{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--vscode-descriptionForeground);
+  animation:dpulse 1.2s ease-in-out infinite;
+}
 .thinking-dots span:nth-child(2){animation-delay:.2s}
 .thinking-dots span:nth-child(3){animation-delay:.4s}
 @keyframes dpulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
-.chat-footer{padding:7px;border-top:1px solid var(--vscode-panel-border);flex-shrink:0;background:var(--vscode-sideBar-background)}
+
+.chat-footer{
+  padding:7px;
+  border-top:1px solid var(--vscode-panel-border);
+  flex-shrink:0;
+  background:var(--vscode-sideBar-background);
+}
 .quick-qs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
-.qq{background:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border);border-radius:10px;padding:3px 8px;font-size:10px;color:var(--vscode-descriptionForeground);cursor:pointer;font-family:inherit}
+.qq{
+  background:var(--vscode-editor-background);
+  border:1px solid var(--vscode-panel-border);
+  border-radius:10px;padding:3px 8px;font-size:10px;
+  color:var(--vscode-descriptionForeground);cursor:pointer;
+  font-family:inherit;
+}
 .qq:hover{border-color:var(--vscode-button-background);color:var(--vscode-editor-foreground)}
+
 .chat-row{display:flex;gap:5px;align-items:flex-end}
-.chat-input{flex:1;resize:none;min-height:32px;max-height:80px;line-height:1.5;font-size:12px}
+.chat-input{
+  flex:1;resize:none;min-height:32px;max-height:80px;
+  line-height:1.5;font-size:12px;
+}
 .chat-actions{display:flex;gap:5px;margin-bottom:5px}
 
 /* ── Settings ───────────────────────────────────────────────────── */
-.provider-card{background:var(--vscode-sideBar-background);border:1px solid var(--vscode-panel-border);border-radius:5px;padding:8px 10px;margin-bottom:6px;cursor:pointer;transition:border-color .15s}
+.provider-card{
+  background:var(--vscode-sideBar-background);
+  border:1px solid var(--vscode-panel-border);
+  border-radius:5px;padding:8px 10px;margin-bottom:6px;cursor:pointer;
+  transition:border-color .15s;
+}
 .provider-card:hover,.provider-card.selected{border-color:var(--vscode-button-background)}
 .provider-card.selected{background:rgba(0,120,212,.05)}
+
 .provider-hdr{display:flex;align-items:center;gap:7px}
-.p-icon{width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:monospace;flex-shrink:0}
+.p-icon{
+  width:22px;height:22px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:monospace;flex-shrink:0;
+}
 .p-name{font-size:12px;font-weight:600;flex:1}
-.provider-fields{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--vscode-panel-border)}
+
+.provider-fields{
+  display:none;margin-top:8px;padding-top:8px;
+  border-top:1px solid var(--vscode-panel-border);
+}
 .provider-fields.open{display:block}
+
 .model-row{display:flex;gap:6px;align-items:center}
 .model-row select,.model-row input{flex:1}
 </style>
- </head>
+</head>
 <body>
+
 <div class="tabs">
-  <button class="tab active" data-tab="analyze">Analyze</button>
-  <button class="tab" data-tab="graph">Graph</button>
-  <button class="tab" data-tab="summary">Summary</button>
-  <button class="tab" data-tab="qa">Q&amp;A</button>
-  <button class="tab" data-tab="settings">Settings</button>
+  <button class="tab active" data-tab="analyze" onclick="showTab('analyze')">Analyze</button>
+  <button class="tab" data-tab="graph" onclick="showTab('graph')">Graph</button>
+  <button class="tab" data-tab="summary" onclick="showTab('summary')">Summary</button>
+  <button class="tab" data-tab="qa" onclick="showTab('qa')">Q&amp;A</button>
+  <button class="tab" data-tab="settings" onclick="showTab('settings')">Settings</button>
 </div>
 
+<!-- ═══════════════════════════════════
+     ANALYZE TAB
+═══════════════════════════════════ -->
 <div id="tab-analyze" class="screen active">
   <div class="scroll">
     <div id="analyze-alert"></div>
@@ -239,7 +396,7 @@ input:focus,select:focus,textarea:focus{
       <div class="card-body" id="ws-sub">Open a folder in VS Code to get started</div>
     </div>
 
-    <button class="btn btn-block" id="local-analyze-btn" style="margin-bottom:12px">
+    <button class="btn btn-block" id="local-analyze-btn" onclick="analyzeLocal()" style="margin-bottom:12px">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
         <circle cx="6.5" cy="6.5" r="4.5"/><path d="M11 11l3 3"/>
       </svg>
@@ -251,6 +408,7 @@ input:focus,select:focus,textarea:focus{
       Skips <code>node_modules</code>, <code>dist</code>, build outputs, and generated files automatically.
     </div>
 
+    <!-- Progress -->
     <div id="progress-wrap" style="display:none" class="progress-wrap">
       <div class="progress-bar-outer">
         <div class="progress-bar-inner" id="pbar" style="width:8%"></div>
@@ -264,14 +422,20 @@ input:focus,select:focus,textarea:focus{
       </div>
     </div>
 
+    <!-- Analysis history -->
     <div id="history-section" style="display:none">
       <div class="history-header">Previous Analyses</div>
       <div id="history-list"></div>
     </div>
+
   </div>
 </div>
 
+<!-- ═══════════════════════════════════
+     GRAPH TAB
+═══════════════════════════════════ -->
 <div id="tab-graph" class="screen">
+
   <div id="graph-empty" style="display:flex">
     <div class="empty-icon">
       <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".6">
@@ -545,164 +709,24 @@ let vscode;
 try { vscode = acquireVsCodeApi(); } catch(e) {}
 function post(msg) { vscode?.postMessage(msg); }
 
-let interactionsWired = false;
-
-function handleDelegatedClick(event) {
-  const target = event.target instanceof Element ? event.target : null;
-  if (!target) return;
-
-  const tab = target.closest('[data-tab]');
-  if (tab) {
-    const name = tab.getAttribute('data-tab');
-    if (name) showTab(name);
-    return;
-  }
-
-  const analyzeButton = target.closest('#local-analyze-btn');
-  if (analyzeButton) { analyzeLocal(); return; }
-
-  const zoomButton = target.closest('.zoom-btn');
-  if (zoomButton) {
-    const buttons = Array.from(document.querySelectorAll('.zoom-btn'));
-    const index = buttons.indexOf(zoomButton);
-    if (index === 0) zoom(1.2);
-    if (index === 1) zoom(0.83);
-    if (index === 2) fitView();
-    return;
-  }
-
-  const quickQuestion = target.closest('.qq');
-  if (quickQuestion) { askQuick(quickQuestion.textContent?.trim() || ''); return; }
-
-  const sendButton = target.closest('#send-btn');
-  if (sendButton) { sendQ(); return; }
-
-  const providerCard = target.closest('.provider-card');
-  if (providerCard?.id) { selProv(providerCard.id.replace('pc-', '')); return; }
-
-  const saveButton = target.closest('.provider-fields .btn.btn-sm');
-  if (saveButton) {
-    const card = saveButton.closest('.provider-card');
-    const name = card?.id?.replace('pc-', '');
-    if (name) saveProv(name);
-    return;
-  }
-
-  const closeButton = target.closest('#node-detail-close');
-  if (closeButton) { closeNodeDetail(); return; }
-
-  const historyDelete = target.closest('.history-del');
-  if (historyDelete) {
-    const id = historyDelete.getAttribute('data-id');
-    if (id) deleteAnalysis(event, id);
-    return;
-  }
-
-  const historyItem = target.closest('.history-item');
-  if (historyItem) {
-    const id = historyItem.getAttribute('data-id');
-    if (id) loadAnalysis(id);
-    return;
-  }
-
-  const detailChip = target.closest('.detail-chip');
-  if (detailChip) {
-    const id = detailChip.getAttribute('data-id');
-    if (id) selectNodeById(id);
-    return;
-  }
-
-  const openFileTarget = target.closest('.open-file-btn, .file-card, #s-entries [data-path]');
-  if (openFileTarget) {
-    const path = openFileTarget.getAttribute('data-path');
-    if (path) openFile(path);
-  }
-}
-
-function wireInteractions() {
-  if (interactionsWired) return;
-  interactionsWired = true;
-
-  const graphSearchInput = document.getElementById('graph-search');
-  graphSearchInput?.addEventListener('input', (event) => {
-    graphSearch(event.target.value);
-  });
-
-  const chatInput = document.getElementById('chat-input');
-  chatInput?.addEventListener('keydown', chatKey);
-  chatInput?.addEventListener('input', (event) => {
-    autoResize(event.target);
-  });
-
-  const sendBtn = document.getElementById('send-btn');
-  sendBtn?.addEventListener('click', sendQ);
-
-  ['groq', 'gemini', 'anthropic', 'openai'].forEach((name) => {
-    document.getElementById('model-' + name)?.addEventListener('change', () => toggleCustomModel(name));
-    document.getElementById('custom-model-' + name)?.addEventListener('input', () => toggleCustomModel(name));
-  });
-}
-
-document.addEventListener('click', handleDelegatedClick, true);
-
 /* ═══════════════════════════════════════════════════════
    TABS
 ═══════════════════════════════════════════════════════ */
 const TAB_ORDER = ['analyze','graph','summary','qa','settings'];
 
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    t.classList.toggle('active', TAB_ORDER[i] === name);
+  // Use data-tab attribute — never rely on element index order
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', (t as HTMLElement).dataset.tab === name);
   });
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const screenEl = document.getElementById('tab-' + name);
-  if (!screenEl) {
-    // visible debug overlay to help diagnose runtime issues in the webview
-    showDebug('showTab: screen element not found: ' + name);
-    console.error('showTab: missing screen element', name);
-    return;
-  }
-  screenEl.classList.add('active');
+  const target = document.getElementById('tab-' + name);
+  if (target) target.classList.add('active');
 
   if (name === 'graph' && graphBuilt) {
     setTimeout(() => { resizeCanvas(); fitView(); render(); }, 50);
   }
 }
-
-function ensureDebugContainer() {
-  let d = document.getElementById('debug-log');
-  if (!d) {
-    d = document.createElement('div');
-    d.id = 'debug-log';
-    d.style.position = 'fixed';
-    d.style.left = '8px';
-    d.style.bottom = '8px';
-    d.style.padding = '8px 10px';
-    d.style.background = 'rgba(0,0,0,0.6)';
-    d.style.color = '#fff';
-    d.style.fontSize = '11px';
-    d.style.borderRadius = '6px';
-    d.style.zIndex = '99999';
-    d.style.maxWidth = '60%';
-    d.style.display = 'none';
-    document.body.appendChild(d);
-  }
-  return d;
-}
-
-function showDebug(msg) {
-  try {
-    const d = ensureDebugContainer();
-    d.textContent = msg;
-    d.style.display = 'block';
-    setTimeout(() => { d.style.display = 'none'; }, 8000);
-  } catch (e) { /* ignore */ }
-}
-
-window.addEventListener('error', (ev) => {
-  try { showDebug('JS error: ' + (ev.message || ev.error?.message || String(ev))); } catch (e) {}
-});
-window.addEventListener('unhandledrejection', (ev) => { showDebug('Unhandled promise rejection'); });
 
 /* ═══════════════════════════════════════════════════════
    ANALYZE
@@ -748,13 +772,13 @@ function renderHistory(records) {
     const date = new Date(r.timestamp).toLocaleString('en-IN', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
     });
-    return \`<div class="history-item" data-id="\${r.id}">
+    return \`<div class="history-item" onclick="loadAnalysis('\${r.id}')">
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0;opacity:.6">
         <circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/>
       </svg>
       <div class="history-item-label" title="\${r.label}">\${r.repoName}</div>
       <div class="history-item-time">\${date}</div>
-      <button class="history-del" data-id="\${r.id}" title="Delete">
+      <button class="history-del" onclick="deleteAnalysis(event,'\${r.id}')" title="Delete">
         <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8">
           <line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/>
         </svg>
@@ -1145,7 +1169,7 @@ function selectNode(node) {
   if (importing.length) {
     html += \`<div class="detail-label">Imports (\${importing.length})</div>\`;
     html += importing.slice(0, 10).map(n =>
-      \`<span class="detail-chip" data-id="\${n.id}">\${n.label}</span>\`
+      \`<span class="detail-chip" onclick="selectNodeById('\${n.id}')">\${n.label}</span>\`
     ).join('');
     if (importing.length > 10) html += \`<span style="font-size:10px;color:var(--vscode-descriptionForeground)"> +\${importing.length-10} more</span>\`;
   }
@@ -1153,7 +1177,7 @@ function selectNode(node) {
   if (usedBy.length) {
     html += \`<div class="detail-label">Used By (\${usedBy.length})</div>\`;
     html += usedBy.slice(0, 10).map(n =>
-      \`<span class="detail-chip" data-id="\${n.id}">\${n.label}</span>\`
+      \`<span class="detail-chip" onclick="selectNodeById('\${n.id}')">\${n.label}</span>\`
     ).join('');
     if (usedBy.length > 10) html += \`<span style="font-size:10px;color:var(--vscode-descriptionForeground)"> +\${usedBy.length-10} more</span>\`;
   }
@@ -1163,7 +1187,7 @@ function selectNode(node) {
     html += node.exports.map(e => \`<span class="detail-chip" style="cursor:default">\${e}</span>\`).join('');
   }
 
-  html += \`<button class="btn btn-secondary open-file-btn" data-path="\${node.path}">
+  html += \`<button class="btn btn-secondary open-file-btn" onclick="openFile('\${node.path.replace(/'/g, "\\\\'")}')">
     Open File
   </button>\`;
 
@@ -1201,7 +1225,7 @@ function showSummary(s, name) {
     \`<div class="card"><div class="card-title">\${m.name}</div><div class="card-body">\${m.description}</div></div>\`
   ).join('');
   document.getElementById('s-entries').innerHTML = (s.entryPoints||[]).map(p =>
-    \`<div style="padding:2px 0;cursor:pointer;color:#569cd6" data-path="\${p}">\${p}</div>\`
+    \`<div style="padding:2px 0;cursor:pointer;color:#569cd6" onclick="openFile('\${p}')">\${p}</div>\`
   ).join('') || '<span style="color:var(--vscode-descriptionForeground)">None detected</span>';
 }
 
@@ -1209,7 +1233,7 @@ function showFileSummaries(files) {
   document.getElementById('s-file-count').textContent = '(' + files.length + ')';
   files.forEach(f => { fileSummaryMap[f.path] = f; });
   document.getElementById('s-files').innerHTML = files.map(f =>
-    \`<div class="file-card" data-path="\${f.path}">
+    \`<div class="file-card" onclick="openFile('\${f.path.replace(/'/g,"\\\\'")}')">
       <div class="file-card-path">\${f.path}</div>
       <div class="file-card-desc">\${f.purpose}</div>
       \${f.exports ? \`<div style="font-size:10px;color:var(--vscode-descriptionForeground);margin-top:3px">Exports: \${f.exports}</div>\` : ''}
@@ -1382,8 +1406,10 @@ window.addEventListener('message', e => {
 
   switch (type) {
     case 'workspaceStatus':
-      document.getElementById('ws-name').textContent = payload.hasWorkspace ? (payload.name || 'Workspace') : 'No workspace open';
-      document.getElementById('ws-sub').textContent = payload.hasWorkspace ? 'Ready to analyze' : 'Open a folder in VS Code to get started';
+      if (payload.hasWorkspace) {
+        document.getElementById('ws-name').textContent = payload.name || 'Workspace';
+        document.getElementById('ws-sub').textContent = 'Ready to analyze';
+      }
       break;
 
     case 'progress':
@@ -1488,11 +1514,8 @@ window.addEventListener('message', e => {
    INIT
 ═══════════════════════════════════════════════════════ */
 window.addEventListener('load', () => {
-  wireInteractions();
   post({ type: 'getSettings' });
 });
-
-wireInteractions();
 </script>
 </body>
 </html>`;
