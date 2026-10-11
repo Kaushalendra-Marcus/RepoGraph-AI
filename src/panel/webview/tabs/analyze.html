@@ -1,28 +1,54 @@
 <div id="tab-analyze" class="screen active">
   <div class="scroll">
     <div id="analyze-alert"></div>
+
+    <div class="page-title">Analyze workspace</div>
+    <div class="page-sub">Scan the open folder, map every import, and detect request / data / event flows.</div>
+
     <div class="card" id="workspace-info-card">
       <div class="card-title" id="ws-name">No workspace open</div>
-      <div class="card-body" id="ws-sub">Open a folder in VS Code to analyze your local project</div>
+      <div class="card-body" id="ws-sub">Open a folder in VS Code to analyze your project.</div>
     </div>
-    <button class="btn btn-block" id="local-analyze-btn" style="margin-bottom:10px">
-      Analyze Current Workspace
+
+    <button class="btn btn-block" id="local-analyze-btn">
+      Analyze current workspace
     </button>
-    <div style="font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.7">
-      Reads all code files from your workspace. Skips
-      <code>node_modules</code>, <code>dist</code>, <code>.git</code> etc. automatically.
+
+    <div class="card-body mt-2 mb-2">
+      Instant dependency graph, no API key needed. Skips
+      <code>node_modules</code>, <code>dist</code>, <code>.git</code> and other generated output automatically.
     </div>
+
+    <!-- Shown when no AI provider is configured -->
+    <div class="card ai-upgrade-card" id="ai-upgrade-card" style="display:none">
+      <div class="card-title">Unlock AI insights</div>
+      <div class="card-body mb-2">
+        Graph + flows already work. Add a <b>free Groq key</b> to also unlock
+        AI summaries, per-file explanations, Q&amp;A chat and custom flow diagrams.
+      </div>
+      <button class="btn btn-sm" id="goto-settings-btn">Add free key in Settings</button>
+    </div>
+
+    <div id="agent-export-card" class="card" style="display:none">
+      <div class="card-title">Share with a coding agent</div>
+      <div class="card-body mb-2">
+        One click saves a compact context file your AI agent can read instead of re-scanning everything.
+      </div>
+      <button class="btn btn-sm btn-secondary" id="agent-export-btn-analyze">Copy context for AI agent</button>
+      <div id="agent-export-status-analyze" class="muted mt-2" style="font-size:10.5px"></div>
+    </div>
+
     <div id="progress-wrap" style="display:none" class="progress-wrap">
       <div class="progress-bar-outer">
         <div class="progress-bar-inner" id="pbar" style="width:8%"></div>
       </div>
-      <div id="progress-msg" style="font-size:11px;color:var(--vscode-descriptionForeground)">Starting...</div>
+      <div id="progress-msg" class="muted" style="font-size:11px">Starting…</div>
       <div class="progress-steps" style="margin-top:4px">
-        <span id="ps1">1.Scan</span>
-        <span id="ps2">2.Graph</span>
-        <span id="ps3">3.Summary</span>
-        <span id="ps4">4.Files</span>
-        <span id="ps5">5.Flows</span>
+        <span id="ps1">1 · Scan</span>
+        <span id="ps2">2 · Graph</span>
+        <span id="ps3">3 · Summary</span>
+        <span id="ps4">4 · Files</span>
+        <span id="ps5">5 · Flows</span>
       </div>
     </div>
   </div>

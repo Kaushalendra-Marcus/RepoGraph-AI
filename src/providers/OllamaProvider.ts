@@ -13,7 +13,7 @@ export class OllamaProvider implements AIProvider {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: this.config.model || "llama3.2",
+        model: this.config.model || "qwen3",
         messages: msgs,
         stream: false,
       }),

@@ -1,9 +1,11 @@
 <div id="tab-summary" class="screen">
   <div id="summary-empty" class="empty" style="display:flex">
-    <div class="empty-title">No Summary Yet</div>
-    <div class="empty-sub">Analyze a project first to see the AI-generated summary</div>
+    <div class="empty-title" id="summary-empty-title">No Insights Yet</div>
+    <div class="empty-sub" id="summary-empty-sub">Analyze a project first to see the summary, key files and Q&amp;A</div>
   </div>
   <div id="summary-ready" class="scroll" style="display:none">
+    <div id="insights-ai-note" class="alert alert-info" style="display:none"></div>
+
     <div class="section-hdr">Overview</div>
     <div class="card">
       <div class="card-title" id="s-name"></div>
@@ -23,9 +25,50 @@
     <div id="s-entries" style="margin-bottom:8px;font-family:monospace;font-size:11px"></div>
 
     <div class="section-hdr">
-      File Summaries
+      Top Files
       <span id="s-file-count" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px"></span>
     </div>
     <div id="s-files"></div>
+    <button class="btn btn-sm btn-secondary btn-block" id="show-all-files-btn" style="display:none;margin-bottom:8px">Show all</button>
+
+    <div class="section-hdr">Inspect any file</div>
+    <div class="card">
+      <div class="card-body" style="margin-bottom:6px">Type part of a filename. AI explains it, or static analysis when no key is set.</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="file-lookup-input" placeholder="e.g. auth.service.ts" style="flex:1" />
+        <button class="btn btn-sm" id="file-lookup-btn">Explain</button>
+      </div>
+      <div id="file-lookup-status" style="font-size:10.5px;margin-top:6px;color:var(--vscode-descriptionForeground)"></div>
+      <div id="file-lookup-result" style="margin-top:8px"></div>
+    </div>
+
+    <div class="section-hdr">Ask about this codebase</div>
+    <div class="card" id="insights-qa-card">
+      <div id="insights-qa-locked" class="card-body" style="display:none">
+        Q&amp;A needs an AI key. <a href="#" id="insights-qa-settings-link">Add a free Groq key in Settings</a>, then analyze again.
+      </div>
+      <div id="insights-qa-ready" style="display:none">
+        <div class="chat-history" id="chat-history" style="max-height:260px"></div>
+        <div class="quick-qs" style="margin:6px 0">
+          <span class="qq" data-q="What does this project do?">What does it do?</span>
+          <span class="qq" data-q="Where is the entry point?">Entry point?</span>
+          <span class="qq" data-q="How is authentication handled?">Auth?</span>
+          <span class="qq" data-q="What are the main modules?">Key modules?</span>
+          <span class="qq" data-q="How do I run this project locally?">How to run?</span>
+          <span class="qq" data-q="What databases or external services are used?">DB / Services?</span>
+        </div>
+        <div class="chat-row">
+          <textarea class="chat-input" id="chat-input" placeholder="Ask anything about the codebase..." rows="1"></textarea>
+          <button class="btn btn-sm" id="chat-send-btn" style="align-self:flex-end">↑</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-hdr">Share with coding agent</div>
+    <div class="card">
+      <div class="card-body" style="margin-bottom:8px">Saves <code>REPOGRAPH-CONTEXT.md</code> + copies it. Agents read it instead of burning tokens re-scanning.</div>
+      <button class="btn btn-sm btn-secondary btn-block" id="agent-export-btn-insights">Copy context for AI agent</button>
+      <div id="agent-export-status-insights" style="font-size:10.5px;margin-top:6px;color:var(--vscode-descriptionForeground)"></div>
+    </div>
   </div>
 </div>

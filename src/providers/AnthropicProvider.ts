@@ -5,7 +5,7 @@ export class AnthropicProvider implements AIProvider {
 
   async chat(messages: Message[], systemPrompt?: string): Promise<string> {
     const body: any = {
-      model: this.config.model || "claude-sonnet-4-6",
+      model: this.config.model || "claude-sonnet-5-5",
       max_tokens: 2048,
       messages: messages.filter((m) => m.role !== "system"),
     };

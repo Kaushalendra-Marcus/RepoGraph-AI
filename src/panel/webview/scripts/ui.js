@@ -2,13 +2,13 @@
 
 const vscode = acquireVsCodeApi();
 
+// 6 tabs: Analyze, Graph, Insights (=summary), Flow, History, Settings
+// (Q&A merged into Insights, AI Tools removed)
 const TAB_IDS = [
   'tab-analyze',
   'tab-graph',
   'tab-summary',
-  'tab-qa',
   'tab-flow',
-  'tab-aitools',
   'tab-history',
   'tab-settings',
 ];
@@ -60,12 +60,39 @@ function activateTab(index) {
     screen.classList.toggle('active', i === index);
     screen.style.display = i === index ? 'flex' : 'none';
   });
+
+  // Graph canvas measures 0 while hidden → re-fit every time tab opens
+  if (TAB_IDS[index] === 'tab-graph' && typeof refreshGraphView === 'function') {
+    setTimeout(refreshGraphView, 60);
+  }
+}
+
+function gotoSettings() {
+  const idx = TAB_IDS.indexOf('tab-settings');
+  if (idx >= 0) activateTab(idx);
 }
 
 function showAlert(scope, message, kind = 'info') {
   const el = byId(`${scope}-alert`);
   if (!el) return;
   el.innerHTML = `<div class="alert alert-${kind}">${escHtml(message)}</div>`;
+}
+
+function showExportStatus(message, kind = 'info') {
+  const stats = byId('graph-stats');
+  if (!stats) return;
+  if (!stats.dataset.locked) {
+    stats.dataset.original = stats.textContent;
+  }
+  stats.dataset.locked = '1';
+  stats.textContent = message;
+  stats.style.color = kind === 'error' ? 'var(--vscode-errorForeground, #f44747)' : '';
+  clearTimeout(stats._exportStatusTimer);
+  stats._exportStatusTimer = setTimeout(() => {
+    stats.textContent = stats.dataset.original || '';
+    stats.style.color = '';
+    stats.dataset.locked = '';
+  }, 4000);
 }
 
 function setProgress(step, pct, message) {
@@ -89,17 +116,76 @@ function setAnalyzing(isBusy) {
   const btn = byId('local-analyze-btn');
   if (btn) {
     btn.disabled = !!isBusy;
-    btn.textContent = isBusy ? 'Analyzing...' : 'Analyze Current Workspace';
+    btn.textContent = isBusy ? 'Analyzing…' : 'Analyze current workspace';
   }
   const wrap = byId('progress-wrap');
   if (wrap && isBusy) wrap.style.display = 'block';
 }
 
+// ── AI upgrade nudge (shown when analysis ran without a key) ──────────────
+
+function showAiUpgrade(reason) {
+  const card = byId('ai-upgrade-card');
+  if (card) card.style.display = 'block';
+
+  const note = byId('graph-ai-note');
+  if (note) {
+    note.style.display = 'block';
+    note.textContent = 'Static graph ready. Add a free Groq key in Settings for AI summaries, Q&A and custom flows.';
+  }
+  const insightsNote = byId('insights-ai-note');
+  if (insightsNote) {
+    insightsNote.style.display = 'block';
+    insightsNote.textContent = reason ||
+      'AI summary is locked (no AI key). Add a free Groq key in Settings for real AI summaries + Q&A.';
+  }
+}
+
+function hideAiUpgrade() {
+  const card = byId('ai-upgrade-card');
+  if (card) card.style.display = 'none';
+  const note = byId('graph-ai-note');
+  if (note) note.style.display = 'none';
+  const insightsNote = byId('insights-ai-note');
+  if (insightsNote) insightsNote.style.display = 'none';
+}
+
+// ── Insights lock (no API key → AI insights stay empty) ───────────────────
+
+function showInsightsLocked(reason) {
+  const empty = byId('summary-empty');
+  const ready = byId('summary-ready');
+  if (empty) empty.style.display = 'flex';
+  if (ready) ready.style.display = 'none';
+  const title = byId('summary-empty-title');
+  const sub = byId('summary-empty-sub');
+  if (title) title.textContent = 'AI Insights Locked';
+  if (sub) sub.textContent = reason ||
+    'Add an API key in Settings (free Groq key works), then click Analyze. Graph + Flow tabs work without a key.';
+  lockQA();
+}
+
+function resetInsightsEmpty() {
+  const title = byId('summary-empty-title');
+  const sub = byId('summary-empty-sub');
+  if (title) title.textContent = 'No Insights Yet';
+  if (sub) sub.textContent = 'Analyze a project first to see the summary, key files and Q&A';
+}
+
+// ── Insights Q&A (merged from old Q&A tab) ────────────────────────────────
+
 function enableQA() {
-  const empty = byId('qa-empty');
-  const ready = byId('qa-ready');
-  if (empty) empty.style.display = 'none';
-  if (ready) ready.style.display = 'flex';
+  const locked = byId('insights-qa-locked');
+  const ready = byId('insights-qa-ready');
+  if (locked) locked.style.display = 'none';
+  if (ready) ready.style.display = 'block';
+}
+
+function lockQA() {
+  const locked = byId('insights-qa-locked');
+  const ready = byId('insights-qa-ready');
+  if (locked) locked.style.display = 'block';
+  if (ready) ready.style.display = 'none';
 }
 
 function addMsg(role, text) {
@@ -152,6 +238,22 @@ function chatKey(event) {
   }
 }
 
+// ── Insights summary: top 5 + show-all + file lookup ──────────────────────
+
+let _showAllFiles = false;
+
+function fileCardHtml(file) {
+  return `
+      <div class="card" style="margin-bottom:6px">
+        <div class="card-title" style="display:flex;justify-content:space-between;gap:8px">
+          <span style="word-break:break-all">${escHtml(file.path)}</span>
+          <span class="badge badge-${escAttr(file.complexity || 'low')}">${escHtml(file.complexity || 'low')}</span>
+        </div>
+        <div class="card-body">${escHtml(file.purpose || '')}</div>
+        ${file.exports ? `<div class="card-body" style="margin-top:3px;font-family:monospace;font-size:10px">↳ ${escHtml(file.exports)}</div>` : ''}
+      </div>`;
+}
+
 function showSummary(summary, repoName) {
   const empty = byId('summary-empty');
   const ready = byId('summary-ready');
@@ -159,6 +261,9 @@ function showSummary(summary, repoName) {
   if (ready) ready.style.display = 'block';
 
   const files = Object.values(fileSummaryMap || {});
+  const hasAI = summary && summary._ai !== false;
+  if (hasAI) hideAiUpgrade();
+
   if (byId('s-name')) byId('s-name').textContent = repoName || '';
   if (byId('s-overview')) byId('s-overview').textContent = summary?.overview || '';
   if (byId('s-arch')) byId('s-arch').textContent = summary?.architecture || '';
@@ -184,29 +289,88 @@ function showSummary(summary, repoName) {
   }
 
   const count = byId('s-file-count');
-  if (count) count.textContent = files.length ? `(${files.length})` : '';
+  if (count) count.textContent = files.length ? `(top ${Math.min(5, files.length)} of ${files.length})` : '';
 
   const list = byId('s-files');
+  const showAllBtn = byId('show-all-files-btn');
   if (list) {
-    list.innerHTML = files.map((file) => `
-      <div class="card" style="margin-bottom:6px">
-        <div class="card-title" style="display:flex;justify-content:space-between;gap:8px">
-          <span style="word-break:break-all">${escHtml(file.path)}</span>
-          <span class="badge badge-${escAttr(file.complexity || 'low')}">${escHtml(file.complexity || 'low')}</span>
-        </div>
-        <div class="card-body">${escHtml(file.purpose || '')}</div>
-      </div>
-    `).join('');
+    const visible = _showAllFiles ? files : files.slice(0, 5);
+    list.innerHTML = visible.map(fileCardHtml).join('') ||
+      '<div class="card-body">No file summaries yet.</div>';
+    if (showAllBtn) {
+      showAllBtn.style.display = files.length > 5 ? 'block' : 'none';
+      showAllBtn.textContent = _showAllFiles ? 'Show less' : `Show all ${files.length}`;
+    }
   }
 }
 
 function showFileSummaries(items) {
   for (const key of Object.keys(fileSummaryMap)) delete fileSummaryMap[key];
   (items || []).forEach((item) => { fileSummaryMap[item.path] = item; });
+  _showAllFiles = false;
 
   if (byId('summary-ready')?.style.display !== 'none') {
     showSummary(_summary, _repoName);
   }
+}
+
+// ── File lookup ───────────────────────────────────────────────────────────
+
+function requestFileLookup() {
+  const input = byId('file-lookup-input');
+  const status = byId('file-lookup-status');
+  const result = byId('file-lookup-result');
+  if (!input) return;
+  const path = input.value.trim();
+  if (!path) {
+    if (status) status.textContent = 'Type part of a filename first.';
+    return;
+  }
+  if (status) status.textContent = `Explaining ${path}...`;
+  if (result) result.innerHTML = '';
+  postMsg({ type: 'summarizeFile', payload: { path } });
+}
+
+function showSingleFileSummary(file) {
+  const status = byId('file-lookup-status');
+  const result = byId('file-lookup-result');
+  if (status) status.textContent = file._ai === false ? 'Static explanation (add AI key for deeper detail):' : 'AI explanation:';
+  if (result) {
+    result.innerHTML = fileCardHtml(file) +
+      `<button class="btn btn-sm btn-secondary btn-block" data-open="${escAttr(file.path)}">Open file</button>`;
+    result.querySelector('[data-open]')?.addEventListener('click', function () {
+      postMsg({ type: 'openFile', payload: { path: this.dataset.open } });
+    });
+  }
+}
+
+// ── Agent context export (one click → save + copy) ────────────────────────
+
+let _lastAgentMarkdown = '';
+
+function requestAgentExport(statusElId) {
+  const status = statusElId ? byId(statusElId) : null;
+  if (status) status.textContent = 'Building compact context...';
+  postMsg({ type: 'exportAgentContext', payload: { save: true } });
+}
+
+function handleAgentContextReady(payload) {
+  _lastAgentMarkdown = payload.markdown || '';
+  const msg = payload.path
+    ? `✓ Saved ${payload.filename} (~${payload.approxTokens} tokens, ~${payload.savedPct}% smaller). Copied to clipboard.`
+    : `✓ Context ready (~${payload.approxTokens} tokens). Copied to clipboard.`;
+  for (const id of ['agent-export-status-analyze', 'agent-export-status-insights', 'agent-export-status-graph']) {
+    const el = byId(id);
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  }
+  // Copy to clipboard so agents can paste instantly
+  try {
+    if (navigator?.clipboard?.writeText && _lastAgentMarkdown) {
+      navigator.clipboard.writeText(_lastAgentMarkdown).catch(() => {});
+    }
+  } catch { /* clipboard unavailable — file save is enough */ }
+  const card = byId('agent-export-card');
+  if (card) card.style.display = 'block';
 }
 
 function showHistory(records) {
@@ -244,8 +408,19 @@ function showHistory(records) {
   });
 }
 
+function markProviderSaved(name, hasKey) {
+  const card = byId(`pc-${name}`);
+  if (card && card.tagName === 'DETAILS') {
+    card.open = true;
+    card.classList.add('selected');
+  }
+  const chk = byId(`check-${name}`);
+  if (chk) chk.style.display = (hasKey === false && name !== 'ollama') ? 'none' : 'inline-flex';
+}
+
 function applySettingsLoaded(payload) {
   if (!payload?.providerName) return;
+  markProviderSaved(payload.providerName, payload.hasKey);
 
   for (const provider of PROVIDERS) {
     const modelSelect = byId(`model-${provider}`);
@@ -277,22 +452,6 @@ function updateTokenDisplay(total) {
   if (el) el.textContent = `Total tokens used: ${total || 0}`;
 }
 
-function setAIToolBusy(docType, busy) {
-  const ids = {
-    readme: 'gen-readme-btn',
-    architecture: 'gen-arch-btn',
-    onboarding: 'gen-onboarding-btn',
-    refactor: 'refactor-btn',
-    pr: 'review-pr-btn',
-  };
-  const btn = byId(ids[docType]);
-  if (!btn) return;
-  btn.disabled = !!busy;
-  if (docType === 'pr' && busy) btn.textContent = 'Reviewing...';
-  if (docType === 'pr' && !busy) btn.textContent = 'Review PR';
-  if (docType === 'refactor' && busy) btn.textContent = 'Analyzing...';
-  if (docType === 'refactor' && !busy) btn.textContent = '🔍 Analyze Code Quality';
-}
 
 function collectProviderPayload(name) {
   const key = byId(`key-${name}`)?.value?.trim() || '';
@@ -332,12 +491,9 @@ function wireProviderControls() {
     }
 
     if (card && fields) {
-      fields.classList.add('open');
-      card.classList.add('selected');
-      card.addEventListener('click', (event) => {
-        if (event.target.closest('input, select, button, a, textarea, label')) return;
-        const isOpen = fields.classList.toggle('open');
-        card.classList.toggle('selected', isOpen);
+      // <details> handles expand/collapse natively; mark open cards selected.
+      card.addEventListener('toggle', () => {
+        card.classList.toggle('selected', card.open);
       });
     }
   }
@@ -349,31 +505,30 @@ function wireUi() {
   });
 
   bindClick('local-analyze-btn', () => postMsg({ type: 'analyzeLocal' }));
+  bindClick('goto-settings-btn', () => gotoSettings());
 
-  bindClick('gen-readme-btn', () => postMsg({ type: 'generateDoc', payload: { docType: 'readme' } }));
-  bindClick('gen-arch-btn', () => postMsg({ type: 'generateDoc', payload: { docType: 'architecture' } }));
-  bindClick('gen-onboarding-btn', () => postMsg({ type: 'generateDoc', payload: { docType: 'onboarding' } }));
+  // Insights: show all + file lookup + chat
+  bindClick('show-all-files-btn', () => {
+    _showAllFiles = !_showAllFiles;
+    if (_summary) showSummary(_summary, _repoName);
+  });
+  bindClick('file-lookup-btn', () => requestFileLookup());
+  const lookupInput = byId('file-lookup-input');
+  if (lookupInput) lookupInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); requestFileLookup(); }
+  });
+  bindClick('chat-send-btn', () => sendQ());
+  const qaLink = byId('insights-qa-settings-link');
+  if (qaLink) qaLink.addEventListener('click', (e) => { e.preventDefault(); gotoSettings(); });
 
-  bindClick('refactor-btn', () => postMsg({ type: 'analyzeRefactor' }));
-  bindClick('save-refactor-btn', () => {
-    if (_refactorContent) postMsg({ type: 'saveDoc', payload: { filename: 'REFACTOR.md', content: _refactorContent } });
-  });
-
-  bindClick('review-pr-btn', () => {
-    const diff = byId('pr-diff-input')?.value?.trim() || '';
-    if (!diff) return;
-    postMsg({ type: 'reviewPR', payload: { diff } });
-  });
-  bindClick('clear-pr-btn', () => {
-    const input = byId('pr-diff-input');
-    if (input) input.value = '';
-  });
-  bindClick('save-pr-btn', () => {
-    if (_prContent) postMsg({ type: 'saveDoc', payload: { filename: 'PR-REVIEW.md', content: _prContent } });
-  });
+  // Agent export (3 entry points, same action)
+  bindClick('agent-export-btn-analyze', () => requestAgentExport('agent-export-status-analyze'));
+  bindClick('agent-export-btn-insights', () => requestAgentExport('agent-export-status-insights'));
+  bindClick('agent-export-btn-graph', () => requestAgentExport('agent-export-status-graph'));
 
   bindClick('flow-ask-btn', () => askFlowDiagram());
-  bindClick('flow-detail-close', () => closeFlowDetail());
+  bindClick('flow-copy-btn', () => copyFlowDiagram());
+  bindClick('flow-custom-copy-btn', () => copyCustomFlowDiagram());
 
   bindClick('clear-filter-btn', () => clearFilters());
   bindInput('depth-filter', () => applyFilters());
@@ -393,7 +548,20 @@ function wireUi() {
     });
   });
 
+  // Flow preset buttons (in flow.html toolbar)
+  document.querySelectorAll('.flow-preset').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const q = btn.dataset.q || btn.textContent || '';
+      const input = byId('flow-ask-input');
+      if (input) input.value = q;
+      postMsg({ type: 'generateCustomFlow', payload: { question: q } });
+      const st = byId('flow-status');
+      if (st) st.textContent = `Generating "${q}"...`;
+    });
+  });
+
   wireProviderControls();
+  lockQA();
   activateTab(0);
 }
 

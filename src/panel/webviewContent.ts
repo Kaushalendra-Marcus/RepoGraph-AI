@@ -371,12 +371,17 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
   </div>
   <div id="graph-wrap" style="display:none;flex:1;flex-direction:column;min-height:0">
     <div class="graph-toolbar">
-      <input type="text" id="graph-search" placeholder="Search file..." oninput="graphSearch(this.value)" style="flex:0 0 130px">
+      <input type="text" id="graph-search" placeholder="Search file..." oninput="graphSearch(this.value)" style="flex:0 0 110px">
       <div class="zoom-btns">
         <div class="zoom-btn" onclick="zoom(1.25)" title="Zoom in">+</div>
         <div class="zoom-btn" onclick="zoom(0.8)" title="Zoom out">-</div>
         <div class="zoom-btn" onclick="resetView()" title="Fit all">⤢</div>
         <div class="zoom-btn" id="filter-toggle" onclick="toggleFilterPanel()" title="Filter">&#9783;</div>
+      </div>
+      <!-- View toggle: Files / Layers -->
+      <div style="display:flex;gap:0;border:1px solid var(--vscode-panel-border);border-radius:3px;overflow:hidden;flex-shrink:0">
+        <button id="view-files-btn" onclick="setGraphView('files')" style="padding:2px 8px;font-size:10px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;cursor:pointer;font-family:inherit;font-weight:600">Files</button>
+        <button id="view-layers-btn" onclick="setGraphView('layers')" style="padding:2px 8px;font-size:10px;background:var(--vscode-sideBar-background);color:var(--vscode-descriptionForeground);border:none;cursor:pointer;font-family:inherit">Layers</button>
       </div>
       <div class="legend" id="graph-legend"></div>
       <div class="graph-stats" id="graph-stats"></div>
@@ -396,6 +401,18 @@ input[type=password]{font-family:monospace;letter-spacing:0.05em}
           <button id="node-detail-close" onclick="closeNodeDetail()">Close</button>
         </div>
         <div id="node-detail-body"></div>
+      </div>
+    </div>
+    <!-- LAYER VIEW -->
+    <div id="layer-view-wrap" style="display:none;flex:1;overflow:hidden;position:relative;min-height:0">
+      <canvas id="layer-canvas" style="position:absolute;top:0;left:0"></canvas>
+      <!-- Layer drill-down: file list for clicked layer -->
+      <div id="layer-detail" style="display:none;position:absolute;right:0;top:0;bottom:0;width:200px;background:var(--vscode-sideBar-background);border-left:1px solid var(--vscode-panel-border);flex-direction:column;overflow:hidden">
+        <div style="padding:8px 10px;border-bottom:1px solid var(--vscode-panel-border);display:flex;align-items:center;justify-content:space-between">
+          <div id="layer-detail-title" style="font-size:12px;font-weight:700"></div>
+          <button onclick="closeLayerDetail()" style="background:none;border:none;cursor:pointer;color:var(--vscode-descriptionForeground);font-size:14px">&#x2715;</button>
+        </div>
+        <div id="layer-detail-files" style="overflow-y:auto;flex:1;padding:6px 8px"></div>
       </div>
     </div>
   </div>
@@ -711,7 +728,10 @@ function showTab(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   if (name==='graph' && graphBuilt) {
-    setTimeout(() => { if (resizeCanvas()) fitView(); render(); }, 60);
+    setTimeout(() => {
+      if (_currentView === 'files') { if (resizeCanvas()) fitView(); render(); }
+      else { initLayerCanvas(); renderLayerView(); }
+    }, 60);
   }
 }
 
@@ -1005,6 +1025,386 @@ function closeNodeDetail() { document.getElementById('node-detail').classList.re
 function graphSearch(val) { searchTerm=val.toLowerCase().trim(); render(); }
 
 /* ══════════════════════════════════════════════════════════
+   LAYER VIEW ENGINE
+══════════════════════════════════════════════════════════ */
+let _layerGroups = [];       // LayerGroup[] from backend
+let _layerCards  = [];       // computed card layout
+let _layerCam    = { x:0, y:0, scale:1 };
+let _layerDragging = false;
+let _layerLastMouse = { x:0, y:0 };
+let _layerPointer   = { down:false, moved:false, startX:0, startY:0 };
+let _layerCanvas, _layerCtx, _layerWrap;
+let _currentView = 'files';  // 'files' | 'layers'
+
+const LAYER_COLORS = {
+  api:     '#569cd6',
+  service: '#4ec9b0',
+  data:    '#dcdcaa',
+  ui:      '#c586c0',
+  util:    '#9cdcfe',
+  config:  '#d7ba7d',
+  test:    '#b5cea8',
+  infra:   '#ce9178',
+  core:    '#4fc1ff',
+};
+
+const COMPLEXITY_COLORS = { simple:'#4ec9b0', moderate:'#dcdcaa', complex:'#f48771' };
+
+// Card dimensions
+const LC = { w:170, h:115, rx:7, hGap:36, vGap:56, padT:16 };
+
+function setGraphView(v) {
+  _currentView = v;
+  const fb = document.getElementById('view-files-btn');
+  const lb = document.getElementById('view-layers-btn');
+  const ccw = document.getElementById('graph-canvas-wrap');
+  const lvw = document.getElementById('layer-view-wrap');
+  const fp  = document.getElementById('filter-panel');
+  const gs  = document.getElementById('graph-search');
+  if (v === 'files') {
+    fb.style.background = 'var(--vscode-button-background)';
+    fb.style.color      = 'var(--vscode-button-foreground)';
+    fb.style.fontWeight = '600';
+    lb.style.background = 'var(--vscode-sideBar-background)';
+    lb.style.color      = 'var(--vscode-descriptionForeground)';
+    lb.style.fontWeight = 'normal';
+    ccw.style.display = '';
+    lvw.style.display = 'none';
+    if (fp) fp.style.display='none';
+    if (gs) gs.style.display='';
+    setTimeout(()=>{ if(resizeCanvas()) fitView(); render(); }, 40);
+  } else {
+    lb.style.background = 'var(--vscode-button-background)';
+    lb.style.color      = 'var(--vscode-button-foreground)';
+    lb.style.fontWeight = '600';
+    fb.style.background = 'var(--vscode-sideBar-background)';
+    fb.style.color      = 'var(--vscode-descriptionForeground)';
+    fb.style.fontWeight = 'normal';
+    ccw.style.display = 'none';
+    lvw.style.display = 'flex';
+    if (fp) fp.style.display='none';
+    if (gs) gs.style.display='none';
+    closeLayerDetail();
+    setTimeout(()=>{ initLayerCanvas(); renderLayerView(); }, 40);
+  }
+}
+
+function initLayerCanvas() {
+  _layerCanvas = document.getElementById('layer-canvas');
+  _layerCtx    = document.getElementById('layer-canvas').getContext('2d');
+  _layerWrap   = document.getElementById('layer-view-wrap');
+  const rect   = _layerWrap.getBoundingClientRect();
+  _layerCanvas.width  = rect.width;
+  _layerCanvas.height = rect.height;
+  _layerCanvas.style.width  = rect.width  + 'px';
+  _layerCanvas.style.height = rect.height + 'px';
+
+  _layerCanvas.onmousedown = e => {
+    const { gx, gy } = layerScreenToGraph(e.offsetX, e.offsetY);
+    _layerPointer = { down:true, moved:false, startX:e.clientX, startY:e.clientY };
+    _layerLastMouse = { x:e.clientX, y:e.clientY };
+    _layerDragging = !_layerCards.find(c => layerCardHit(c, gx, gy));
+  };
+  _layerCanvas.onmouseup = e => {
+    const dist = Math.hypot(e.clientX-_layerPointer.startX, e.clientY-_layerPointer.startY);
+    if (_layerPointer.down && !_layerPointer.moved && dist < 5) {
+      const { gx, gy } = layerScreenToGraph(e.offsetX, e.offsetY);
+      const hit = _layerCards.find(c => layerCardHit(c, gx, gy));
+      if (hit) openLayerDetail(hit.group);
+    }
+    _layerDragging = false;
+    _layerPointer.down = false;
+  };
+  _layerCanvas.onmousemove = e => {
+    if (Math.hypot(e.clientX-_layerPointer.startX, e.clientY-_layerPointer.startY) > 3) _layerPointer.moved = true;
+    if (_layerDragging) {
+      _layerCam.x += e.clientX - _layerLastMouse.x;
+      _layerCam.y += e.clientY - _layerLastMouse.y;
+      _layerLastMouse = { x:e.clientX, y:e.clientY };
+      renderLayerView();
+    } else {
+      const { gx, gy } = layerScreenToGraph(e.offsetX, e.offsetY);
+      _layerCanvas.style.cursor = _layerCards.find(c => layerCardHit(c, gx, gy)) ? 'pointer' : 'grab';
+    }
+  };
+  _layerCanvas.onwheel = e => {
+    e.preventDefault();
+    const f = e.deltaY < 0 ? 1.12 : 0.89;
+    const rect = _layerCanvas.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    _layerCam.x = mx-(mx-_layerCam.x)*f;
+    _layerCam.y = my-(my-_layerCam.y)*f;
+    _layerCam.scale = Math.max(0.2, Math.min(4, _layerCam.scale*f));
+    renderLayerView();
+  };
+}
+
+function layerScreenToGraph(sx, sy) {
+  return { gx:(sx-_layerCam.x)/_layerCam.scale, gy:(sy-_layerCam.y)/_layerCam.scale };
+}
+function layerCardHit(card, gx, gy) {
+  return gx >= card.x && gx <= card.x+LC.w && gy >= card.y && gy <= card.y+LC.h;
+}
+
+function computeLayerLayout(groups) {
+  // Topological sort of layers to determine row order
+  // Build adjacency: dependsOn = edges from group
+  const ids = groups.map(g => g.layer);
+  const inDeg = {};
+  ids.forEach(id => inDeg[id] = 0);
+  groups.forEach(g => { g.dependsOn.forEach(dep => { if (inDeg[dep]!==undefined) inDeg[dep]++; }); });
+
+  // Kahn's algo for row layers
+  const rows = [];
+  let remaining = new Set(ids);
+  while (remaining.size > 0) {
+    const row = [...remaining].filter(id => inDeg[id] === 0);
+    if (!row.length) { rows.push([...remaining]); break; }
+    rows.push(row);
+    row.forEach(id => {
+      remaining.delete(id);
+      const g = groups.find(g => g.layer === id);
+      if (g) g.dependsOn.forEach(dep => { if (inDeg[dep]!==undefined) inDeg[dep]--; });
+    });
+  }
+
+  // Assign x,y coordinates to each layer
+  const cards = [];
+  rows.forEach((row, ri) => {
+    const totalW = row.length * (LC.w + LC.hGap) - LC.hGap;
+    // center the rows
+    const startX = -totalW / 2;
+    row.forEach((layerId, ci) => {
+      const group = groups.find(g => g.layer === layerId);
+      if (!group) return;
+      cards.push({
+        group,
+        x: startX + ci * (LC.w + LC.hGap),
+        y: LC.padT + ri * (LC.h + LC.vGap),
+        row: ri, col: ci,
+      });
+    });
+  });
+  return cards;
+}
+
+function fitLayerView() {
+  if (!_layerCards.length || !_layerCanvas) return;
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const c of _layerCards) {
+    minX=Math.min(minX,c.x); minY=Math.min(minY,c.y);
+    maxX=Math.max(maxX,c.x+LC.w); maxY=Math.max(maxY,c.y+LC.h);
+  }
+  const pad=40, W=_layerCanvas.width-pad*2, H=_layerCanvas.height-pad*2;
+  const gW=maxX-minX||1, gH=maxY-minY||1;
+  _layerCam.scale = Math.max(0.25, Math.min(2.5, Math.min(W/gW, H/gH)));
+  _layerCam.x = pad - (minX*_layerCam.scale);
+  _layerCam.y = pad - (minY*_layerCam.scale);
+}
+
+function renderLayerView() {
+  if (!_layerCtx || !_layerCanvas || !_layerGroups.length) return;
+
+  // Recompute cards if needed
+  if (!_layerCards.length) {
+    _layerCards = computeLayerLayout(_layerGroups);
+    fitLayerView();
+  }
+
+  const ctx = _layerCtx;
+  ctx.clearRect(0, 0, _layerCanvas.width, _layerCanvas.height);
+  ctx.save();
+  ctx.translate(_layerCam.x, _layerCam.y);
+  ctx.scale(_layerCam.scale, _layerCam.scale);
+
+  const cardMap = new Map(_layerCards.map(c => [c.group.layer, c]));
+
+  // ── Draw dependency arrows first (behind cards) ───────────────────────────────
+  const drawnEdges = new Set();
+  for (const card of _layerCards) {
+    for (const dep of card.group.dependsOn) {
+      const target = cardMap.get(dep);
+      if (!target) continue;
+      const edgeKey = [card.group.layer, dep].sort().join('->');
+      if (drawnEdges.has(edgeKey)) continue;
+      drawnEdges.add(edgeKey);
+
+      // from bottom-center of source card to top-center of target
+      const ax = card.x + LC.w/2, ay = card.y + LC.h;
+      const bx = target.x + LC.w/2, by = target.y;
+
+      // bezier curve
+      const my = (ay + by) / 2;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.bezierCurveTo(ax, my + 20, bx, my - 20, bx, by);
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4,3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // edge count badge
+      const mx2 = (ax+bx)/2, my2 = (ay+by)/2;
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = '600 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('1', mx2, my2);
+
+      // arrowhead at target top
+      drawArrow(ctx, ax, my-10, bx, by, 'rgba(255,255,255,0.3)');
+    }
+  }
+
+  // ── Draw cards ───────────────────────────────────────────────────────────────────
+  for (const card of _layerCards) {
+    const { x, y, group } = card;
+    const color = LAYER_COLORS[group.layer] || '#9cdcfe';
+    const cxColor = COMPLEXITY_COLORS[group.complexity];
+
+    // Card shadow
+    ctx.shadowColor = color + '33';
+    ctx.shadowBlur  = 18;
+
+    // Card background
+    ctx.beginPath();
+    roundRect(ctx, x, y, LC.w, LC.h, LC.rx);
+    ctx.fillStyle = 'rgba(30,30,40,0.92)';
+    ctx.fill();
+
+    // Left accent border
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y + LC.rx, 3, LC.h - LC.rx*2);
+    ctx.beginPath();
+    ctx.arc(x+1.5, y+LC.rx, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x+1.5, y+LC.h-LC.rx, 1.5, 0, Math.PI*2); ctx.fill();
+
+    // Outer border
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    roundRect(ctx, x, y, LC.w, LC.h, LC.rx);
+    ctx.strokeStyle = color + '44';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // LAYER label (top-left)
+    ctx.font = '700 7.5px var(--vscode-font-family,\'Segoe UI\',sans-serif)';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.letterSpacing = '0.1em';
+    ctx.fillText('LAYER', x+12, y+15);
+    ctx.letterSpacing = '0';
+
+    // Complexity badge (top-right)
+    const badgeX = x + LC.w - 8;
+    ctx.font = '600 7.5px var(--vscode-font-family,\'Segoe UI\',sans-serif)';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = cxColor;
+    ctx.fillText(group.complexity, badgeX, y+15);
+
+    // Title
+    ctx.font = '700 12.5px var(--vscode-font-family,\'Segoe UI\',sans-serif)';
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.textAlign = 'left';
+    const title = group.label.length > 20 ? group.label.slice(0,18)+'…' : group.label;
+    ctx.fillText(title, x+12, y+32);
+
+    // Description — wrap to 2 lines
+    ctx.font = '400 9.5px var(--vscode-font-family,\'Segoe UI\',sans-serif)';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    const words = group.description.split(' ');
+    let line1='', line2='';
+    let overflow=false;
+    for (const w of words) {
+      const test = line1 ? line1+' '+w : w;
+      if (ctx.measureText(test).width > LC.w-24) {
+        if (!line2) { line2=w; }
+        else { const t2=line2+' '+w; if(ctx.measureText(t2).width>LC.w-24){overflow=true;break;} line2=t2; }
+      } else { line1=test; }
+    }
+    if (overflow && line2) line2=line2.trimEnd()+'…';
+    ctx.fillText(line1, x+12, y+48);
+    if (line2) ctx.fillText(line2, x+12, y+61);
+
+    // File count
+    ctx.font = '400 9.5px var(--vscode-font-family,\'Segoe UI\',sans-serif)';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText(group.fileCount + ' file' + (group.fileCount !== 1 ? 's' : ''), x+12, y+LC.h-10);
+
+    // Bottom connector dots (shows it's clickable)
+    if (group.dependsOn.length > 0) {
+      ctx.beginPath();
+      ctx.arc(x+LC.w/2, y+LC.h+3, 3, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fill();
+    }
+    if (group.dependedOnBy.length > 0) {
+      ctx.beginPath();
+      ctx.arc(x+LC.w/2, y-3, 3, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+  const ang = Math.atan2(y2-y1, x2-x1);
+  const len = 7;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - len*Math.cos(ang-0.4), y2 - len*Math.sin(ang-0.4));
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - len*Math.cos(ang+0.4), y2 - len*Math.sin(ang+0.4));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([]);
+  ctx.stroke();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r, y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x, y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function openLayerDetail(group) {
+  const detail = document.getElementById('layer-detail');
+  const color  = LAYER_COLORS[group.layer] || '#9cdcfe';
+  document.getElementById('layer-detail-title').textContent = group.label;
+  document.getElementById('layer-detail-title').style.color = color;
+
+  const filesHtml = group.filePaths.slice(0,60).map(p => {
+    const name = p.split('/').pop();
+    return '<div class="file-card" data-fpath="' + escAttr(p) + '" style="padding:5px 7px;margin-bottom:4px">' +
+      '<div class="file-card-path" style="font-size:10px">' + escHtml(name) + '</div>' +
+      '<div style="font-size:9px;color:var(--vscode-descriptionForeground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(p) + '</div>' +
+    '</div>';
+  }).join('');
+
+  document.getElementById('layer-detail-files').innerHTML =
+    '<div style="font-size:10px;color:var(--vscode-descriptionForeground);margin-bottom:6px">' + escHtml(group.description) + '</div>' +
+    '<div style="font-size:9.5px;margin-bottom:6px"><span style="color:' + color + ';font-weight:700">' + group.fileCount + '</span> files &nbsp;&bull;&nbsp; complexity: <span style="color:' + COMPLEXITY_COLORS[group.complexity] + ';font-weight:600">' + group.complexity + '</span></div>' +
+    filesHtml +
+    (group.filePaths.length > 60 ? '<div style="font-size:9.5px;color:var(--vscode-descriptionForeground);padding:4px 0">+' + (group.filePaths.length-60) + ' more files...</div>' : '');
+
+  detail.style.display = 'flex';
+  detail.querySelectorAll('.file-card').forEach(el => {
+    el.addEventListener('click', () => openFileHandler(el.dataset.fpath));
+  });
+}
+
+function closeLayerDetail() {
+  const d = document.getElementById('layer-detail');
+  if (d) d.style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════════════════
    SUMMARY
 ══════════════════════════════════════════════════════════ */
 function showSummary(s, name) {
@@ -1197,6 +1597,8 @@ window.addEventListener('message', e=>{
 
     case 'graphReady':
       setProgress(2,40,'Graph built!');
+      _layerGroups = payload.layerGroups || [];
+      _layerCards  = [];   // reset so layout is recomputed
       initGraph(payload);
       break;
 
@@ -1220,6 +1622,8 @@ window.addEventListener('message', e=>{
 
     case 'analysisRestored':
       _repoName=payload.repoName; _summary=payload.summary;
+      _layerGroups = payload.layerGroups || [];
+      _layerCards  = [];
       setAnalyzing(false);
       initGraph(payload.graph);
       showFileSummaries(payload.fileSummaries||[]);

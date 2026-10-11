@@ -2,7 +2,7 @@
   <!-- Empty state -->
   <div id="graph-empty" class="empty" style="display:flex">
     <div class="empty-title">Dependency Graph</div>
-    <div class="empty-sub">Analyze a project to see how files connect to each other</div>
+    <div class="empty-sub">Analyze a project to see how files connect, no API key needed</div>
   </div>
 
   <!-- Graph canvas wrapper — shown after analysis -->
@@ -13,11 +13,23 @@
         <div class="zoom-btn" onclick="zoom(1.25)" title="Zoom in">+</div>
         <div class="zoom-btn" onclick="zoom(0.8)"  title="Zoom out">−</div>
         <div class="zoom-btn" onclick="resetView()" title="Fit all">⤢</div>
+        <div class="zoom-btn" id="mode-toggle-btn" onclick="toggleGraphMode()" title="Switch to 3D view">3D</div>
         <div class="zoom-btn" id="filter-toggle" onclick="toggleFilterPanel()" title="Filter">☰</div>
       </div>
+      <div class="export-wrap" id="export-wrap">
+        <button class="btn btn-sm btn-secondary" id="export-toggle" onclick="toggleExportMenu()" title="Export graph">Export ▾</button>
+        <div class="export-menu" id="export-menu" style="display:none">
+          <div class="export-menu-item" onclick="exportGraph('png')">PNG (raster)</div>
+          <div class="export-menu-item" onclick="exportGraph('svg')">SVG (vector)</div>
+        </div>
+      </div>
+      <button class="btn btn-sm" id="agent-export-btn-graph" title="Save REPOGRAPH-CONTEXT.md + copy it for AI agents">Copy for AI agent</button>
       <div class="legend" id="graph-legend"></div>
       <div class="graph-stats" id="graph-stats"></div>
     </div>
+
+    <div id="graph-ai-note" class="alert alert-info" style="display:none;margin:6px 8px 0"></div>
+    <div id="agent-export-status-graph" style="display:none;font-size:10.5px;padding:4px 10px;color:var(--vscode-descriptionForeground)"></div>
 
     <div id="filter-panel" style="display:none">
       <div class="filter-row">

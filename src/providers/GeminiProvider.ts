@@ -4,7 +4,7 @@ export class GeminiProvider implements AIProvider {
   constructor(private config: ProviderConfig) {}
 
   async chat(messages: Message[], systemPrompt?: string): Promise<string> {
-    const model = this.config.model || "gemini-1.5-flash";
+    const model = this.config.model || "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`;
 
     const contents = messages

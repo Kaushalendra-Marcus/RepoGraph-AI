@@ -15,7 +15,7 @@ export class OpenAIProvider implements AIProvider {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({
-        model: this.config.model || "gpt-4o-mini",
+        model: this.config.model || "gpt-5-mini",
         messages: msgs,
         max_tokens: 2048,
         temperature: 0.3,

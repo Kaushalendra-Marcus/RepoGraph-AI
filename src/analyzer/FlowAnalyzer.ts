@@ -26,7 +26,7 @@ export interface EventFlow {
 
 export interface DbAccessPattern {
   file: string;
-  orm: string;       // "prisma" | "mongoose" | "typeorm" | "sequelize" | "raw-sql" | "knex"
+  orm: string;       // "prisma" | "mongoose" | "typeorm" | "sequelize" | "raw-sql" | "knex" | "sqlalchemy" | "django-orm" | "asyncpg"
   operations: string[]; // ["findMany", "create", "update"]
   models: string[];  // ["User", "Post"] — detected model names
 }
@@ -107,8 +107,73 @@ export function analyzeFlows(files: WorkspaceFile[]): FlowContext {
 
 // ── Route extraction ──────────────────────────────────────────────────────
 
+function joinUrlPrefix(prefix: string, routePath: string): string {
+  if (!prefix) return routePath || "/";
+  if (!routePath || routePath === "/") return prefix;
+  if (routePath.startsWith("/")) return `${prefix}${routePath}`;
+  return `${prefix}/${routePath}`;
+}
+
 function extractRoutes(file: WorkspaceFile, out: RouteDefinition[]) {
   const content = file.content;
+  const lang = file.language;
+  const isTS = lang === "TypeScript" || lang === "JavaScript" || lang === "Vue" || lang === "Svelte";
+
+  // ── Python: FastAPI / Flask / Django ──────────────────────────────────
+  if (lang === "Python") {
+    // Same-file APIRouter prefix, e.g. router = APIRouter(prefix="/chat")
+    let pyPrefix = "";
+    const prefixMatch = content.match(/APIRouter\s*\([^)]*?prefix\s*=\s*['"`]([^'"`]+)['"`]/);
+    if (prefixMatch) pyPrefix = prefixMatch[1].replace(/\/$/, "");
+
+    // FastAPI: @router.post("/path", ...) / @app.get("", ...) followed by def handler(
+    const fastRe = /@(router|app)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]*)['"`]([^)]*)\)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = fastRe.exec(content)) !== null) {
+      const after = content.slice(m.index + m[0].length, m.index + m[0].length + 600);
+      const defMatch = after.match(/(?:async\s+)?def\s+(\w+)\s*\(/);
+      const handler = defMatch ? defMatch[1] : "anonymous";
+      const middlewares: string[] = [];
+      const depRe = /Depends\s*\(\s*([\w.]+)/g;
+      let dm: RegExpExecArray | null;
+      const decoratorArgs = m[4] || "";
+      while ((dm = depRe.exec(decoratorArgs)) !== null) middlewares.push(dm[1]);
+      out.push({
+        httpMethod: m[2].toUpperCase(),
+        path: joinUrlPrefix(pyPrefix, m[3]),
+        handler,
+        file: file.path,
+        middlewares,
+      });
+    }
+
+    // Flask: @app.route("/path", methods=["GET", "POST"]) + def handler(
+    const flaskRe = /@(app|blueprint|bp)\s*\.route\s*\(\s*['"`]([^'"`]+)['"`]([^)]*)\)/gi;
+    while ((m = flaskRe.exec(content)) !== null) {
+      const after = content.slice(m.index + m[0].length, m.index + m[0].length + 600);
+      const defMatch = after.match(/(?:async\s+)?def\s+(\w+)\s*\(/);
+      const handler = defMatch ? defMatch[1] : "anonymous";
+      const methodsMatch = (m[3] || "").match(/methods\s*=\s*\[([^\]]+)\]/i);
+      const methods = methodsMatch
+        ? [...methodsMatch[1].matchAll(/['"`](\w+)['"`]/g)].map((x) => x[1].toUpperCase())
+        : ["GET"];
+      for (const method of methods) {
+        out.push({ httpMethod: method, path: m[2], handler, file: file.path, middlewares: [] });
+      }
+    }
+
+    // Django: path("route/", views.handler) in urls.py
+    if (/urls\.py$/.test(file.path)) {
+      const djangoRe = /(?:path|re_path)\s*\(\s*['"`]([^'"`]+)['"`]\s*,\s*([\w.]+)/g;
+      while ((m = djangoRe.exec(content)) !== null) {
+        const handlerFull = m[2].split(".").pop() || m[2];
+        out.push({ httpMethod: "ALL", path: `/${m[1]}`.replace(/\/+/g, "/"), handler: handlerFull, file: file.path, middlewares: [] });
+      }
+    }
+    return;
+  }
+
+  if (!isTS) return;
 
   // Express/Fastify/Hapi style: router.get('/path', middleware, handler)
   const expressRe = /(?:router|app|server|fastify)\s*\.\s*(get|post|put|patch|delete|all|use)\s*\(\s*['"`]([^'"`]+)['"`]\s*,([^)]+)\)/gi;
@@ -143,20 +208,29 @@ function extractRoutes(file: WorkspaceFile, out: RouteDefinition[]) {
 
 // ── DB access extraction ──────────────────────────────────────────────────
 
-const ORM_SIGNATURES: { orm: string; pattern: RegExp; modelPattern?: RegExp }[] = [
-  { orm: "prisma",    pattern: /prisma\.(\w+)\.(findMany|findFirst|findUnique|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate)/g, modelPattern: /prisma\.(\w+)\./g },
-  { orm: "mongoose",  pattern: /(\w+Model|new \w+|Model)\.(?:find|findOne|findById|save|create|updateOne|updateMany|deleteOne|deleteMany|aggregate|populate)\(/g },
-  { orm: "typeorm",   pattern: /(?:getRepository|repository|this\.\w+Repository|\.createQueryBuilder)\s*[.(]/g },
-  { orm: "sequelize", pattern: /(\w+)\.(?:findAll|findOne|findByPk|create|update|destroy|upsert|bulkCreate)\s*\(/g },
-  { orm: "knex",      pattern: /knex\s*\(\s*['"`](\w+)['"`]\s*\)|\.from\s*\(\s*['"`](\w+)['"`]\s*\)/g },
+const ORM_SIGNATURES: { orm: string; pattern: RegExp; modelPattern?: RegExp; langs?: string[] }[] = [
+  { orm: "prisma",    pattern: /prisma\.(\w+)\.(findMany|findFirst|findUnique|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate)/g, modelPattern: /prisma\.(\w+)\./g, langs: ["TypeScript", "JavaScript"] },
+  { orm: "mongoose",  pattern: /([A-Z]\w*Model|new [A-Z]\w*|Model)\.(?:find|findOne|findById|save|create|updateOne|updateMany|deleteOne|deleteMany|aggregate|populate)\(/g, langs: ["TypeScript", "JavaScript"] },
+  { orm: "typeorm",   pattern: /(?:getRepository|repository|this\.\w+Repository|\.createQueryBuilder)\s*[.(]/g, langs: ["TypeScript", "JavaScript"] },
+  // Tightened: model must be Capitalized so `x.create(` / `db.update(` don't false-positive.
+  { orm: "sequelize", pattern: /([A-Z]\w*)\.(?:findAll|findOne|findByPk|create|update|destroy|upsert|bulkCreate)\s*\(/g, langs: ["TypeScript", "JavaScript"] },
+  { orm: "knex",      pattern: /knex\s*\(\s*['"`](\w+)['"`]\s*\)|\.from\s*\(\s*['"`](\w+)['"`]\s*\)/g, langs: ["TypeScript", "JavaScript"] },
   { orm: "raw-sql",   pattern: /(?:db|pool|connection|client)\s*\.(?:query|execute|run)\s*\(\s*['"`]/g },
+  // ── Python ORMs ──
+  { orm: "sqlalchemy", pattern: /\bsession\s*\.\s*(query|add|add_all|execute|delete|merge|commit|flush)\s*\(|\bconn\s*\.\s*(execute|run_sync)\s*\(|select\s*\(\s*[A-Z]\w*|insert\s*\(\s*[A-Z]\w*|update\s*\(\s*[A-Z]\w*|delete\s*\(\s*[A-Z]\w*/g, modelPattern: /(?:class\s+([A-Z]\w*)\s*\(.*Base|select\s*\(\s*([A-Z]\w*))/g, langs: ["Python"] },
+  { orm: "django-orm", pattern: /objects\s*\.\s*(filter|get|create|get_or_create|update|update_or_create|delete|all|exclude|annotate|aggregate)\s*\(/g, langs: ["Python"] },
+  // NOTE: `execute` intentionally excluded — `await conn.execute(...)` is also
+  // SQLAlchemy's connection API; asyncpg is identified by its fetch* family.
+  { orm: "asyncpg",   pattern: /await\s+(?:conn|connection|pool)\s*\.\s*(fetch|fetchrow|fetchval)\s*\(/g, langs: ["Python"] },
 ];
 
 function extractDbAccess(file: WorkspaceFile, out: DbAccessPattern[]) {
   const content = file.content;
-  const existing = out.find((d) => d.file === file.path);
 
   for (const sig of ORM_SIGNATURES) {
+    // Skip ORMs that don't apply to this file's language (prevents
+    // `sequelize` firing on Python test files that call `.create(`).
+    if (sig.langs && !sig.langs.includes(file.language)) continue;
     if (!sig.pattern.test(content)) { sig.pattern.lastIndex = 0; continue; }
     sig.pattern.lastIndex = 0;
 
@@ -192,13 +266,16 @@ function extractDbAccess(file: WorkspaceFile, out: DbAccessPattern[]) {
 
     if (uniqueOps.length === 0 && uniqueModels.length === 0) continue;
 
+    const existing = out.find((d) => d.file === file.path && d.orm === sig.orm);
     if (existing) {
       existing.operations.push(...uniqueOps);
       existing.models.push(...uniqueModels);
+      existing.operations = [...new Set(existing.operations)].slice(0, 8);
+      existing.models = [...new Set(existing.models)].slice(0, 6);
     } else {
       out.push({ file: file.path, orm: sig.orm, operations: uniqueOps, models: uniqueModels });
     }
-    break; // one ORM per file is enough
+    // No break: a file can legitimately use multiple data-access styles.
   }
 }
 
@@ -250,6 +327,13 @@ function extractMiddleware(file: WorkspaceFile, out: { file: string; names: stri
   let m: RegExpExecArray | null;
   while ((m = useRe.exec(content)) !== null) {
     if (m[1] && !/['"`]/.test(m[1])) names.push(m[1]);
+  }
+
+  // app.use(require('cors')), app.use(cors()), app.use(authMw('x'))
+  const useCallRe = /(?:app|router|server)\s*\.use\s*\(\s*(?:require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)|([\w.]+)\s*\()/g;
+  while ((m = useCallRe.exec(content)) !== null) {
+    const name = (m[1] || m[2] || "").split("/").pop();
+    if (name && !/['"`]/.test(name)) names.push(name);
   }
 
   // NestJS guards / interceptors / pipes
@@ -314,6 +398,14 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
     }
   }
 
+  const pathSet = new Set(files.map((f) => f.path));
+
+  const push = (from: string, to: string, method: string, kind: CallChain["kind"]) => {
+    if (!to || to === from) return;
+    const key = `${from}→${to}→${method}`;
+    if (!seen.has(key)) { seen.add(key); chains.push({ from, to, method, kind }); }
+  };
+
   for (const file of files) {
     // Named imports: import { Foo, Bar } from './something'
     const namedRe = /import\s+\{([^}]+)\}\s+from\s+['"`]([^'"`]+)['"`]/g;
@@ -322,10 +414,8 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
       const importPath = m[2];
       const names = m[1].split(",").map((s) => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
       for (const name of names) {
-        const targetFile = exportIndex.get(name);
-        if (!targetFile || targetFile === file.path) continue;
-        const key = `${file.path}→${targetFile}→${name}`;
-        if (!seen.has(key)) { seen.add(key); chains.push({ from: file.path, to: targetFile, method: name, kind: "import" }); }
+        const targetFile = resolveImportTarget(file.path, importPath, pathSet) ?? exportIndex.get(name);
+        if (targetFile) push(file.path, targetFile, name, "import");
       }
     }
 
@@ -334,10 +424,49 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
     while ((m = defaultRe.exec(file.content)) !== null) {
       const name = m[1];
       if (/^(React|Vue|express|path|fs|http|https|os|util)$/.test(name)) continue;
-      const targetFile = exportIndex.get(name);
-      if (!targetFile || targetFile === file.path) continue;
-      const key = `${file.path}→${targetFile}→${name}`;
-      if (!seen.has(key)) { seen.add(key); chains.push({ from: file.path, to: targetFile, method: name, kind: "import" }); }
+      const targetFile = resolveImportTarget(file.path, m[2], pathSet) ?? exportIndex.get(name);
+      if (targetFile) push(file.path, targetFile, name, "import");
+    }
+
+    // Namespace imports: import * as ns from './something'
+    const nsRe = /import\s+\*\s+as\s+(\w+)\s+from\s+['"`]([^'"`]+)['"`]/g;
+    while ((m = nsRe.exec(file.content)) !== null) {
+      const targetFile = resolveImportTarget(file.path, m[2], pathSet);
+      if (targetFile) push(file.path, targetFile, m[1], "import");
+    }
+
+    // Side-effect imports: import './something'
+    const sideRe = /import\s+['"`]([^'"`]+)['"`]\s*;?/g;
+    while ((m = sideRe.exec(file.content)) !== null) {
+      const targetFile = resolveImportTarget(file.path, m[1], pathSet);
+      if (targetFile) push(file.path, targetFile, "(side-effect)", "import");
+    }
+
+    // CommonJS: const X = require('./y'), const {A,B} = require('./y'), require('./y')
+    const reqRe = /(?:const|let|var)\s+(?:(\w+)|\{([^}]+)\})\s*=\s*require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)|require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
+    while ((m = reqRe.exec(file.content)) !== null) {
+      const reqPath = m[3] ?? m[4];
+      if (!reqPath || !reqPath.startsWith(".")) continue; // only relative
+      const targetFile = resolveImportTarget(file.path, reqPath, pathSet);
+      if (!targetFile) continue;
+      if (m[1]) push(file.path, targetFile, m[1], "import");
+      else if (m[2]) {
+        for (const name of m[2].split(",").map((s) => s.trim().split(/\s*:\s*/)[0].trim()).filter(Boolean)) {
+          push(file.path, targetFile, name, "import");
+        }
+      } else push(file.path, targetFile, "(side-effect)", "import");
+    }
+
+    // Re-exports: export { X } from './y', export * from './y'
+    const reExpRe = /export\s+(?:\{([^}]+)\}|\*)\s+from\s+['"`]([^'"`]+)['"`]/g;
+    while ((m = reExpRe.exec(file.content)) !== null) {
+      const targetFile = resolveImportTarget(file.path, m[2], pathSet);
+      if (!targetFile) continue;
+      if (m[1]) {
+        for (const name of m[1].split(",").map((s) => s.trim().split(/\s+as\s+/).pop()!.trim()).filter(Boolean)) {
+          push(file.path, targetFile, name, "import");
+        }
+      } else push(file.path, targetFile, "(re-export)", "import");
     }
   }
 
@@ -366,7 +495,7 @@ function buildSummary(
   const routeLines = routes.slice(0, 30).map((r) => {
     const ctrl = r.controller ? ` (${r.controller}.${r.handler})` : ` → ${r.handler}`;
     const mws = r.middlewares.length ? ` [mw: ${r.middlewares.slice(0, 2).join(", ")}]` : "";
-    return `${r.httpMethod} ${r.path}${ctrl}${mws} — ${r.file}`;
+    return `${r.httpMethod} ${r.path}${ctrl}${mws} (${r.file})`;
   });
 
   const chainLines = chains.slice(0, 40).map((c) =>
@@ -412,4 +541,33 @@ function buildSummary(
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Resolve a relative import ('./x', '../y') to a real workspace file path.
+ * Returns undefined for bare package imports or unresolvable paths.
+ */
+function resolveImportTarget(from: string, importPath: string, pathSet: Set<string>): string | undefined {
+  if (!importPath.startsWith(".")) return undefined;
+  const dir = from.split("/").slice(0, -1).join("/");
+  const parts: string[] = [];
+  for (const seg of `${dir}/${importPath}`.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  const base = parts.join("/");
+  const candidates = [
+    base,
+    `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.jsx`,
+    `${base}.py`, `${base}.go`, `${base}.java`, `${base}.rb`, `${base}.php`,
+    `${base}/index.ts`, `${base}/index.tsx`, `${base}/index.js`, `${base}/index.jsx`,
+  ];
+  for (const c of candidates) if (pathSet.has(c)) return c;
+  // Prefix match (handles compiled/out mirrors like src/x → same tree)
+  for (const c of candidates) {
+    const hit = [...pathSet].find((p) => p === c || p.endsWith(`/${c}`));
+    if (hit) return hit;
+  }
+  return undefined;
 }

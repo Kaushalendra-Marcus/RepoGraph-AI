@@ -39,8 +39,23 @@
         "command": "repograph.open",
         "title": "RepoGraph AI: Open Panel",
         "icon": "$(graph)"
+      },
+      {
+        "command": "repograph.reindex",
+        "title": "RepoGraph AI: Reindex Workspace (one-click graph)",
+        "icon": "$(sync)"
       }
     ],
+    "configuration": {
+      "title": "RepoGraph AI",
+      "properties": {
+        "repograph.autoIndex": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically build/update the code graph on folder open and file save. No CLI needed."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {

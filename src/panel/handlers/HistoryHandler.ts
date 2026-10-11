@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
-import { DependencyGraph } from "../../analyzer/GraphBuilder";
+import { DependencyGraph, buildLayerGroups } from "../../analyzer/GraphBuilder";
 import { RepoSummary } from "../../agents/RepoSummaryAgent";
 import { FileSummary } from "../../agents/FileSummaryAgent";
 import { FullFlowMap } from "../../agents/FlowDiagramAgent";
 import { QAAgent } from "../../agents/QAAgent";
+import { scanWorkspace } from "../../analyzer/WorkspaceScanner";
+import { analyzeFlows } from "../../analyzer/FlowAnalyzer";
 import { PanelState } from "./PanelState";
 
 export interface AnalysisRecord {
@@ -52,8 +54,11 @@ export class HistoryHandler {
     this.state.currentFileSummaries = latest.fileSummaries;
     this.state.currentFlowMap = latest.flowMap;
 
+    // Re-scan file contents in background so file lookup + agent export work after restart
+    await this.ensureWorkspaceFiles();
+
     if (this.state.provider) {
-      const stub = { name: latest.repoName, rootPath: "", files: [], isLocal: true as const };
+      const stub = this.state.workspaceInfo ?? { name: latest.repoName, rootPath: "", files: [], isLocal: true as const };
       this.state.qaAgent = new QAAgent(this.state.provider, stub, latest.graph, latest.summary);
     }
   }
@@ -70,6 +75,8 @@ export class HistoryHandler {
     this.state.currentFileSummaries = record.fileSummaries;
     this.state.currentFlowMap = record.flowMap;
 
+    await this.ensureWorkspaceFiles();
+
     if (this.state.provider && this.state.workspaceInfo) {
       this.state.qaAgent = new QAAgent(
         this.state.provider, this.state.workspaceInfo, record.graph, record.summary
@@ -81,10 +88,12 @@ export class HistoryHandler {
       payload: {
         repoName: record.repoName,
         graph: record.graph,
+        layerGroups: buildLayerGroups(record.graph),
         summary: record.summary,
         fileSummaries: record.fileSummaries,
         flowMap: record.flowMap,
         hasQA: !!this.state.qaAgent,
+        hasAI: !!this.state.provider,
       },
     });
 
@@ -99,5 +108,27 @@ export class HistoryHandler {
     const records = this.getAll().filter((r) => r.id !== payload.id);
     await this.context.workspaceState.update("repograph.history", records);
     this.post({ type: "historyLoaded", payload: { records: this.listMeta() } });
+  }
+
+  /** Re-populate workspaceInfo.files so on-demand lookup works after restore. */
+  private async ensureWorkspaceFiles() {
+    try {
+      if (this.state.workspaceInfo?.files?.length) {
+        // Rebuild flow context if missing (needed for custom flows + agent export)
+        if (!this.state.currentFlowContext) {
+          this.state.currentFlowContext = analyzeFlows(this.state.workspaceInfo.files);
+        }
+        return;
+      }
+      const wsInfo = await scanWorkspace();
+      if (wsInfo) {
+        this.state.workspaceInfo = wsInfo;
+        if (!this.state.currentFlowContext) {
+          this.state.currentFlowContext = analyzeFlows(wsInfo.files);
+        }
+      }
+    } catch {
+      // Best-effort only — restore still works without file contents
+    }
   }
 }

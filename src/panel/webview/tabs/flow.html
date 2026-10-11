@@ -2,43 +2,77 @@
 
   <!-- Empty state -->
   <div id="flow-empty" class="empty" style="display:flex">
-    <div class="empty-title">Data Flow Diagrams</div>
+    <div class="empty-title">No flow diagram yet</div>
     <div class="empty-sub">
-      Analyze a project to auto-detect flows, or ask a question below to generate a custom diagram.
+      Analyze a project to see the complete data-travel map. Static diagram works without an API key.
     </div>
   </div>
 
   <!-- Main flow view — shown after analysis -->
   <div id="flow-ready" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden">
 
-    <!-- Toolbar: ask custom + overview toggle -->
+    <!-- Toolbar: AI custom flow + function flow -->
     <div class="flow-toolbar">
+      <div class="flow-presets">
+        <button class="btn btn-sm btn-secondary flow-preset" data-q="API request lifecycle flow">API request</button>
+        <button class="btn btn-sm btn-secondary flow-preset" data-q="Authentication and authorization flow">Auth flow</button>
+        <button class="btn btn-sm btn-secondary flow-preset" data-q="Component data flow and state management">Component data</button>
+        <button class="btn btn-sm btn-secondary flow-preset" data-q="Database query and data access path">DB query path</button>
+      </div>
       <div class="flow-ask-row">
         <input
           type="text"
           class="flow-ask-input"
           id="flow-ask-input"
-          placeholder='Ask: "show me the auth flow" or "how does the order service work?"'
+          placeholder="Ask AI for a flow, e.g. how does login work? (needs API key)"
+          spellcheck="false"
         />
         <button class="btn btn-sm" id="flow-ask-btn">Generate</button>
       </div>
-    </div>
-
-    <!-- Sub-diagram grid (overview) -->
-    <div id="flow-grid-wrap" style="flex:1;overflow-y:auto;min-height:0">
-      <div class="flow-grid" id="flow-grid"></div>
-    </div>
-
-    <!-- Detail panel: opens on tile click, overlays the grid -->
-    <div id="flow-detail">
-      <div id="flow-detail-header">
-        <div id="flow-detail-title">Flow detail</div>
-        <button id="flow-detail-close">✕</button>
+      <div id="flow-status" class="muted mt-2" style="font-size:10.5px"></div>
+      <div class="flow-ask-row mt-2" style="display:flex;gap:6px">
+        <input type="text" class="flow-ask-input" id="flow-fn-file" placeholder="Function flow, file, e.g. src/auth/service.ts" spellcheck="false" style="flex:2" />
+        <input type="text" class="flow-ask-input" id="flow-fn-name" placeholder="function" spellcheck="false" style="flex:1" />
+        <button class="btn btn-sm btn-secondary" id="flow-fn-btn">Function flow</button>
       </div>
-      <div id="flow-detail-body">
-        <!-- Mermaid diagram rendered here -->
-        <div id="flow-detail-mermaid" class="mermaid"></div>
-        <div id="flow-detail-files" style="margin-top:12px;font-size:11px;color:var(--vscode-descriptionForeground)"></div>
+    </div>
+
+    <!-- The one complete diagram -->
+    <div id="flow-main-wrap" style="flex:1;overflow-y:auto;min-height:0;padding:10px 12px">
+      <div class="flow-tile-title" id="flow-main-title">Data flow</div>
+      <div class="flow-tile-desc" id="flow-main-desc" style="margin-bottom:8px"></div>
+      <div class="row" style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+        <button class="btn btn-sm btn-secondary" id="flow-zoom-out" title="Zoom out">-</button>
+        <span id="flow-zoom-level" class="muted" style="font-size:10.5px;min-width:38px;text-align:center">100%</span>
+        <button class="btn btn-sm btn-secondary" id="flow-zoom-in" title="Zoom in">+</button>
+        <button class="btn btn-sm btn-secondary" id="flow-fit-btn" title="Fit diagram">Fit</button>
+        <button class="btn btn-sm btn-secondary" id="flow-fs-btn" title="Fullscreen diagram">Fullscreen</button>
+        <span class="muted" style="font-size:10.5px">drag to pan, scroll to zoom</span>
+      </div>
+      <div id="flow-main-viewport">
+        <div id="flow-main-zoom"><div id="flow-main-mermaid" class="mermaid"></div></div>
+      </div>
+      <details class="mt-2">
+        <summary class="muted" style="font-size:10.5px;cursor:pointer">View diagram source</summary>
+        <pre id="flow-main-source" class="ai-result-box mt-2" style="font-family:Consolas,monospace;white-space:pre"></pre>
+      </details>
+      <div class="row mt-2" style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-secondary" id="flow-copy-btn">Copy diagram source</button>
+        <button class="btn btn-sm btn-secondary" id="flow-export-mmd">Save .mmd</button>
+        <button class="btn btn-sm btn-secondary" id="flow-export-svg">Save .svg</button>
+        <button class="btn btn-sm btn-secondary" id="flow-export-json">Save .json</button>
+      </div>
+      <div id="flow-main-files" class="muted mt-2" style="font-size:11px"></div>
+
+      <!-- AI custom result (hidden until asked) -->
+      <div id="flow-custom-wrap" style="display:none;margin-top:14px;border-top:1px solid var(--vscode-panel-border);padding-top:10px">
+        <div class="flow-tile-title" id="flow-custom-title">Custom flow</div>
+        <div class="flow-tile-desc" id="flow-custom-desc" style="margin-bottom:8px"></div>
+        <div id="flow-custom-mermaid" class="mermaid"></div>
+        <div class="row mt-2" style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-secondary" id="flow-custom-copy-btn">Copy diagram source</button>
+        </div>
+        <div id="flow-custom-files" class="muted mt-2" style="font-size:11px"></div>
       </div>
     </div>
   </div>

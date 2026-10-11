@@ -39,7 +39,7 @@ function scoreFile(file: WorkspaceFile, node?: GraphNode): number {
   if (SKIP_EXTENSIONS.has(ext)) return -1;
 
   // Config/data files — skip AI, no summary needed
-  if ([".json", ".yaml", ".yml", ".toml", ".ini", ".env"].some((e) => p.endsWith(e))) return -1;
+  if ([".json", ".yaml", ".yml", ".toml", ".ini", ".env", ".txt", ".md"].some((e) => p.endsWith(e))) return -1;
 
   let score = 0;
 
@@ -74,6 +74,21 @@ function scoreFile(file: WorkspaceFile, node?: GraphNode): number {
 }
 
 // ── Public: select & summarize important files only ───────────────────────
+// NOTE: capped at 10 to save tokens. UI shows top 5 + on-demand lookup.
+
+export function selectTopFiles(
+  nodes: GraphNode[],
+  files: WorkspaceFile[],
+  topN = 10
+): WorkspaceFile[] {
+  const nodeByPath = new Map(nodes.map((n) => [n.path, n]));
+  return files
+    .map((f) => ({ file: f, score: scoreFile(f, nodeByPath.get(f.path)) }))
+    .filter(({ score }) => score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topN)
+    .map(({ file }) => file);
+}
 
 export async function summarizeFiles(
   provider: AIProvider,
@@ -83,14 +98,8 @@ export async function summarizeFiles(
 ): Promise<FileSummary[]> {
   const nodeByPath = new Map(nodes.map((n) => [n.path, n]));
 
-  // Score every file and select the top meaningful ones
-  const scored = files
-    .map((f) => ({ file: f, score: scoreFile(f, nodeByPath.get(f.path)) }))
-    .filter(({ score }) => score >= 0)
-    .sort((a, b) => b.score - a.score);
-
-  // Cap at 30 files — beyond that summaries become noise
-  const selected = scored.slice(0, 30).map(({ file }) => file);
+  // Score every file and select the top meaningful ones (cap 10 — token saver)
+  const selected = selectTopFiles(nodes, files, 10);
 
   const summaries: FileSummary[] = [];
 
@@ -149,7 +158,7 @@ ${content}
 Based on the ACTUAL CODE ABOVE (not assumptions), respond ONLY with valid JSON:
 {
   "path": "${file.path}",
-  "purpose": "Precise 1-2 sentence description of what this file actually does — based on the real code, naming real classes/functions/routes",
+  "purpose": "Precise 1-2 sentence description of what this file actually does, based on the real code, naming real classes/functions/routes",
   "exports": "Comma-separated list of actual exported names visible in the code",
   "complexity": "low | medium | high (based on code complexity)",
   "keyFunctions": ["actual function/class names from the code, max 5"]
@@ -176,9 +185,39 @@ Rules:
   return { ...parsed, path: file.path };
 }
 
+// ── On-demand single file summary (used by Insights file lookup) ─────────
+
+export async function summarizeOneFile(
+  provider: AIProvider,
+  targetPath: string,
+  nodes: GraphNode[],
+  files: WorkspaceFile[]
+): Promise<FileSummary> {
+  const file = files.find((f) => f.path === targetPath);
+  if (!file) throw new Error(`File not found in workspace: ${targetPath}`);
+  const nodeByPath = new Map(nodes.map((n) => [n.path, n]));
+  try {
+    return await summarizeSingleFile(provider, file, nodeByPath.get(file.path));
+  } catch {
+    return buildHeuristicSummary(file, nodeByPath.get(file.path));
+  }
+}
+
+/** Static summaries without any AI call — used when no API key is set. */
+export function buildHeuristicSummaries(
+  nodes: GraphNode[],
+  files: WorkspaceFile[],
+  topN = 5
+): FileSummary[] {
+  const nodeByPath = new Map(nodes.map((n) => [n.path, n]));
+  return selectTopFiles(nodes, files, topN).map((f) =>
+    buildHeuristicSummary(f, nodeByPath.get(f.path))
+  );
+}
+
 // ── Heuristic fallback (no AI call) ──────────────────────────────────────
 
-function buildHeuristicSummary(file: WorkspaceFile, node?: GraphNode): FileSummary {
+export function buildHeuristicSummary(file: WorkspaceFile, node?: GraphNode): FileSummary {
   const content = file.content;
 
   // Extract real exported names from code
@@ -187,26 +226,71 @@ function buildHeuristicSummary(file: WorkspaceFile, node?: GraphNode): FileSumma
   // Extract real function/class names
   const fnNames = extractFunctionNames(content).slice(0, 5);
 
-  // Build a purpose string from actual code structure
-  const classMatches   = content.match(/(?:export\s+)?(?:default\s+)?class\s+(\w+)/g) || [];
-  const routeMatches   = content.match(/(?:router|app)\.(get|post|put|patch|delete)\s*\(\s*['"]([^'"]+)['"]/g) || [];
-  const decoratorRoutes = content.match(/@(Get|Post|Put|Patch|Delete|Controller)\s*\(\s*['"]([^'"]*)['"]\s*\)/g) || [];
+  // Strip comments so prose like "first-class stage" isn't mistaken for code.
+  const codeOnly = content
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|\s)\/\/.*$/gm, "$1")
+    .replace(/"""[\s\S]*?"""/g, " ")
+    .replace(/'''[\s\S]*?'''/g, " ");
+
+  // Build a purpose string from actual code structure.
+  // NOTE: class detection is line-anchored so `@dataclass\nclass X`
+  // (Python decorator + newline) doesn't phantom-match a class named "class".
+  const classMatches   = codeOnly.match(/^[ \t]*(?:export\s+)?(?:default\s+)?class\s+(\w+)/gm) || [];
+  const expressRoutes  = codeOnly.match(/(?:router|app)\.(get|post|put|patch|delete)\s*\(\s*['"]([^'"]+)['"]/g) || [];
+  const fastapiRoutes  = codeOnly.match(/@(router|app)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]*)['"`]/gi) || [];
+  const flaskRoutes    = codeOnly.match(/@(?:app|blueprint|bp)\s*\.route\s*\(\s*['"`]([^'"`]+)['"`]/gi) || [];
+  const decoratorRoutes = codeOnly.match(/@(Get|Post|Put|Patch|Delete|Controller)\s*\(\s*['"]([^'"]*)['"]\s*\)/g) || [];
+  const tsTypes        = codeOnly.match(/\bexport\s+(?:default\s+)?(?:interface|type|enum)\s+(\w+)/g) || [];
+  const barrelReexport = codeOnly.match(/\bexport\s+(?:\*|\{[^}]*\})\s*from\s*['"][^'"]+['"]/g) || [];
+  const pyDefs         = file.path.endsWith(".py")
+    ? (codeOnly.match(/^(?:async\s+)?def\s+(\w+)\s*\(/gm) || []).map((m) => m.replace(/.*def\s+/, "").replace(/\s*\(.*/, "").trim())
+    : [];
+  const pyClasses      = file.path.endsWith(".py")
+    ? (codeOnly.match(/^class\s+(\w+)/gm) || []).map((m) => m.replace(/.*class\s+/, "").trim())
+    : [];
+  // Python compatibility shim: only `from x import *` re-exports, no own code.
+  const pyStarReexport = file.path.endsWith(".py")
+    ? (codeOnly.match(/^from\s+([\w.]+)\s+import\s+\*/gm) || []).map((m) => m.replace(/^from\s+/, "").replace(/\s+import\s+\*.*/, "").trim())
+    : [];
 
   let purpose = "";
 
+  const allRoutes = [...expressRoutes, ...fastapiRoutes, ...flaskRoutes];
   if (classMatches.length > 0) {
     const names = classMatches.map((m) => m.replace(/.*class\s+/, "").trim()).join(", ");
     purpose = `Defines ${names}`;
     if (node?.inDegree && node.inDegree > 2) purpose += ` (used by ${node.inDegree} other files)`;
-  } else if (routeMatches.length > 0) {
-    purpose = `Defines ${routeMatches.length} HTTP route${routeMatches.length > 1 ? "s" : ""}`;
-    const sample = routeMatches.slice(0, 3).map((r) => {
-      const m = r.match(/\.(get|post|put|patch|delete)\s*\(\s*['"]([^'"]+)['"]/i);
-      return m ? `${m[1].toUpperCase()} ${m[2]}` : r;
+  } else if (allRoutes.length > 0) {
+    purpose = `Defines ${allRoutes.length} HTTP route${allRoutes.length > 1 ? "s" : ""}`;
+    const sample = allRoutes.slice(0, 3).map((r) => {
+      const m = r.match(/\.(get|post|put|patch|delete|route)\s*\(\s*['"`]([^'"`]+)['"`]/i) || r.match(/\(\s*['"`]([^'"`]+)['"`]/);
+      if (m && m[2]) return `${(m[1] || "ROUTE").toUpperCase()} ${m[2]}`;
+      if (m && m[1] && !/route/i.test(m[0])) return m[1];
+      return r.slice(0, 40);
     });
     purpose += `: ${sample.join(", ")}`;
   } else if (decoratorRoutes.length > 0) {
     purpose = `NestJS controller with ${decoratorRoutes.length} route handler${decoratorRoutes.length > 1 ? "s" : ""}`;
+  } else if (tsTypes.length > 0) {
+    const names = tsTypes.map((m) => m.replace(/.*(?:interface|type|enum)\s+/, "").trim()).slice(0, 4).join(", ");
+    const usedBy = node?.inDegree ? ` (used by ${node.inDegree} other files)` : "";
+    purpose = barrelReexport.length > 0
+      ? `Shared type definitions (${names}), barrel re-export${usedBy}`
+      : `Shared type definitions: ${names}${usedBy}`;
+  } else if (barrelReexport.length > 0) {
+    const targets = barrelReexport.slice(0, 3).map((m) => {
+      const mm = m.match(/from\s*['"]([^'"]+)['"]/);
+      return mm ? mm[1] : "?";
+    }).join(", ");
+    purpose = `Barrel re-export of ${targets}${node?.inDegree ? ` (used by ${node.inDegree} files)` : ""}`;
+  } else if (pyClasses.length > 0) {
+    purpose = `Defines ${pyClasses.slice(0, 3).join(", ")}`;
+    if (node?.inDegree && node.inDegree > 2) purpose += ` (used by ${node.inDegree} other files)`;
+  } else if (pyStarReexport.length > 0) {
+    purpose = `Compatibility re-export shim for ${pyStarReexport.slice(0, 2).join(", ")} (no own logic)`;
+  } else if (pyDefs.length > 0) {
+    purpose = `Exports utilities: ${pyDefs.slice(0, 3).join(", ")}`;
   } else if (fnNames.length > 0) {
     purpose = `Exports utilities: ${fnNames.slice(0, 3).join(", ")}`;
   } else {
@@ -224,9 +308,17 @@ function buildHeuristicSummary(file: WorkspaceFile, node?: GraphNode): FileSumma
 
 function extractExportedNames(content: string): string {
   const names: string[] = [];
+  // Python: top-level defs + classes (public only)
+  const pyDef = /^(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(/gm;
+  const pyCls = /^class\s+([A-Za-z_]\w*)/gm;
+  let m: RegExpExecArray | null;
+  while ((m = pyDef.exec(content)) !== null) {
+    if (!m[1].startsWith("_")) names.push(m[1]);
+  }
+  while ((m = pyCls.exec(content)) !== null) names.push(m[1]);
+  if (names.length) return [...new Set(names)].slice(0, 8).join(", ");
   // export class/function/const/type/interface Foo
   const re1 = /\bexport\s+(?:default\s+)?(?:class|function|const|let|var|interface|type|enum)\s+(\w+)/g;
-  let m: RegExpExecArray | null;
   while ((m = re1.exec(content)) !== null) names.push(m[1]);
   // export { Foo, Bar }
   const re2 = /\bexport\s+\{([^}]+)\}/g;

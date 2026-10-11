@@ -52,15 +52,24 @@ function build() {
 
   const css = read(path.join(WEBVIEW, 'styles.css'));
 
-  // Tab HTML fragments
+  // Provider logos (inlined as <!--LOGO:name--> placeholders in settings.html)
+  const LOGOS = ['groq', 'ollama', 'googlegemini', 'anthropic', 'openai'];
+  const logoSvg = {};
+  for (const name of LOGOS) {
+    logoSvg[name] = read(path.join(ROOT, 'public', 'assets', 'logos', `${name}.svg`));
+  }
+  function inlineLogos(html) {
+    return html.replace(/<!--LOGO:([\w-]+)-->/g, (m, name) => logoSvg[name] || '');
+  }
+
+  // Tab HTML fragments (Q&A merged into Insights = summary.html)
   const tabAnalyze   = readTab('analyze.html');
   const tabGraph     = readTab('graph.html');
   const tabSummary   = readTab('summary.html');
-  const tabQA        = readTab('qa.html');
   const tabFlow      = readTab('flow.html');
-  const tabAITools   = readTab('aitools.html');
   const tabHistory   = readTab('history.html');
-  const tabSettings  = readTab('settings.html');
+  let tabSettings  = readTab('settings.html');
+  tabSettings = inlineLogos(tabSettings);
 
   // JS scripts (order matters: graph → flow → messaging → ui)
   const jsGraph     = readScript('graph.js');
@@ -109,14 +118,12 @@ ${css}
 </head>
 <body>
 
-<!-- Tab bar -->
+<!-- Tab bar: simplified — Q&A merged into Insights -->
 <div class="tabs">
   <button class="tab active">Analyze</button>
   <button class="tab">Graph</button>
-  <button class="tab">Summary</button>
-  <button class="tab">Q&amp;A</button>
+  <button class="tab">Insights</button>
   <button class="tab">Flow</button>
-  <button class="tab">AI Tools</button>
   <button class="tab">History</button>
   <button class="tab">Settings</button>
 </div>
@@ -125,9 +132,7 @@ ${css}
 ${tabAnalyze}
 ${tabGraph}
 ${tabSummary}
-${tabQA}
 ${tabFlow}
-${tabAITools}
 ${tabHistory}
 ${tabSettings}
 

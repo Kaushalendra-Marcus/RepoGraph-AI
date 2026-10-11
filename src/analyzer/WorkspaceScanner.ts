@@ -19,10 +19,19 @@ export interface WorkspaceInfo {
 const SKIP_DIRS = new Set([
   "node_modules", ".git", "dist", "build", ".next", ".nuxt", "__pycache__",
   ".venv", "venv", "env", ".tox", "coverage", ".cache", "vendor",
-  "target", "bin", "obj", ".idea", ".vscode", "out", ".output",
+  "target", "bin", "obj", ".idea", ".vscode", ".opencode", "out", ".output",
   ".turbo", ".vercel", ".parcel-cache", ".sass-cache", ".eslintcache",
   "tmp", "temp", "logs",
+  ".pytest_cache", ".mypy_cache", ".ruff_cache", "screenshots", "__snapshots__",
 ]);
+
+const SKIP_FILE_RES: RegExp[] = [
+  /package-lock\.json$/, /yarn\.lock$/, /pnpm-lock.*$/, /poetry\.lock$/,
+  /\.min\.(js|css)$/, /\.map$/, /\.pyc$/, /e2e-results\.json$/,
+  /\.d\.ts$/,
+  /robots\.txt$/,
+  /(^|\/)REPOGRAPH-CONTEXT\.md$/,
+];
 
 const CODE_EXTS: Record<string, string> = {
   ".ts": "TypeScript", ".tsx": "TypeScript",
@@ -34,7 +43,15 @@ const CODE_EXTS: Record<string, string> = {
   ".vue": "Vue", ".svelte": "Svelte",
   ".json": "JSON", ".yaml": "YAML", ".yml": "YAML",
   ".toml": "TOML", ".md": "Markdown",
+  // Plain text is scanned ONLY so manifest files (requirements.txt) are
+  // available for tech-stack detection — never counted as source code.
+  ".txt": "Text",
 };
+
+/** Non-source .txt basenames worth scanning for stack detection. */
+const MANIFEST_TXT_BASENAMES = new Set([
+  "requirements.txt", "requirements-dev.txt", "requirements-test.txt",
+]);
 
 export async function scanWorkspace(
   onProgress?: (msg: string) => void
@@ -54,17 +71,22 @@ export async function scanWorkspace(
   const pattern = new vscode.RelativePattern(root, "**/*");
   const allUris = await vscode.workspace.findFiles(
     pattern,
-    "**/{node_modules,.git,dist,build,.next,.nuxt,__pycache__,.venv,venv,env,.tox,coverage,.cache,vendor,target,bin,obj,.idea,.vscode,out,.output,.turbo,.vercel,.parcel-cache,.sass-cache,.eslintcache,tmp,temp,logs}/**"
+    "**/{node_modules,.git,dist,build,.next,.nuxt,__pycache__,.venv,venv,env,.tox,coverage,.cache,.pytest_cache,.mypy_cache,.ruff_cache,vendor,target,bin,obj,.idea,.vscode,.opencode,out,.output,.turbo,.vercel,.parcel-cache,.sass-cache,.eslintcache,tmp,temp,logs,screenshots}/**"
   );
 
-  // Filter to code files only
+  // Filter to code files only (+ manifests needed for stack detection)
   const codeUris = allUris.filter((uri) => {
     const ext = path.extname(uri.fsPath).toLowerCase();
     if (!CODE_EXTS[ext]) return false;
     // Double-check no skipped dirs
     const rel = path.relative(rootPath, uri.fsPath);
     const parts = rel.split(path.sep);
-    return !parts.some((p) => SKIP_DIRS.has(p));
+    if (parts.some((p) => SKIP_DIRS.has(p))) return false;
+    const relPosix = rel.replace(/\\/g, "/");
+    if (SKIP_FILE_RES.some((re) => re.test(relPosix))) return false;
+    // .txt files: only manifests (requirements.txt), not docs like robots.txt
+    if (ext === ".txt" && !MANIFEST_TXT_BASENAMES.has(parts[parts.length - 1])) return false;
+    return true;
   });
 
   onProgress?.(`Found ${codeUris.length} code files. Reading contents...`);
