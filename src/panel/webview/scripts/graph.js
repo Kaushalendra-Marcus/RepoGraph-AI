@@ -19,6 +19,9 @@ let graphMode = '2d'; // '2d' | '3d'
 let rot = { x: 0.5, y: -0.65 };
 let centroid = { x: 0, y: 0, z: 0 };
 const FOCAL = 900;
+// 3D sphere: every node renders near-equal so the globe stays readable.
+// 2D keeps hub-sized nodes; only the sphere normalizes.
+const SPHERE_R = 11;
 
 const GROUP_COLORS = [
   '#569cd6','#4ec9b0','#c586c0','#dcdcaa','#d7ba7d',
@@ -479,7 +482,7 @@ function hitNodeAt(sx, sy) {
     for (const n of nodes) {
       const p = project3(n);
       n._p = p;
-      if (Math.hypot(p.x - sx, p.y - sy) < Math.max(6, n.r * p.s + 3)) {
+      if (Math.hypot(p.x - sx, p.y - sy) < Math.max(6, SPHERE_R * p.s + 3)) {
         if (p.z < bestZ) { bestZ = p.z; best = n; }
       }
     }
@@ -519,7 +522,7 @@ function fitView() {
     for (const n of nodes) n._p = project3(n);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of nodes) {
-      const pr = Math.max(2.5, n.r * n._p.s) + 22;
+      const pr = Math.max(2.5, SPHERE_R * n._p.s) + 22;
       minX = Math.min(minX, n._p.x - pr); maxX = Math.max(maxX, n._p.x + pr);
       minY = Math.min(minY, n._p.y - pr); maxY = Math.max(maxY, n._p.y + pr);
     }
@@ -532,7 +535,7 @@ function fitView() {
     for (const n of nodes) n._p = project3(n);
     minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
     for (const n of nodes) {
-      const pr = Math.max(2.5, n.r * n._p.s) + 22;
+      const pr = Math.max(2.5, SPHERE_R * n._p.s) + 22;
       minX = Math.min(minX, n._p.x - pr); maxX = Math.max(maxX, n._p.x + pr);
       minY = Math.min(minY, n._p.y - pr); maxY = Math.max(maxY, n._p.y + pr);
     }
@@ -655,7 +658,7 @@ function render3D() {
     const dx = b._p.x - a._p.x, dy = b._p.y - a._p.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < 1) continue;
-    const ra = Math.max(2, a.r * a._p.s), rb = Math.max(2, b.r * b._p.s);
+    const ra = Math.max(2, SPHERE_R * a._p.s), rb = Math.max(2, SPHERE_R * b._p.s);
     const sx = a._p.x + (dx / dist) * ra, sy = a._p.y + (dy / dist) * ra;
     const ex = b._p.x - (dx / dist) * (rb + 6), ey = b._p.y - (dy / dist) * (rb + 6);
     const alpha = dimmed ? 0.04 : (0.06 + 0.10 * Math.min(1.2, depthS));
@@ -672,7 +675,7 @@ function render3D() {
   const sorted = [...nodes].sort((a, b) => (b._p?.z ?? 0) - (a._p?.z ?? 0));
   for (const n of sorted) {
     const p = n._p;
-    const pr = Math.max(2.5, n.r * p.s);
+    const pr = Math.max(2.5, SPHERE_R * p.s);
     const depthFade = 0.35 + 0.65 * Math.min(1.2, p.s) / 1.2;
     const isSel = n.id === sid, isConn = connIds.has(n.id);
     const dimmed = sid && !isSel && !isConn;

@@ -1,4 +1,5 @@
 import { WorkspaceFile } from "./WorkspaceScanner";
+import { resolveImportPath } from "./GraphBuilder";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,21 +92,78 @@ export function analyzeFlows(files: WorkspaceFile[]): FlowContext {
 
   // Build call chains from actual import → export matching
   const callChains = buildCallChains(files, routes);
+  // Route-touching chains first: the flow diagram is built from them, so a
+  // cap must never cut the exact edges the diagram needs to show depth.
+  // Priority 2 = within 2 hops of any route file (the pipeline path),
+  // priority 1 = touches a route file, else 0.
+  const routeFiles = new Set(routes.map((r) => r.file));
+  const adj = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    if (!adj.has(a)) adj.set(a, new Set());
+    adj.get(a)!.add(b);
+  };
+  for (const c of callChains) { link(c.from, c.to); link(c.to, c.from); }
+  const nearRoutes = new Set<string>(routeFiles);
+  let frontier = [...routeFiles];
+  for (let hop = 0; hop < 2 && frontier.length; hop++) {
+    const next: string[] = [];
+    for (const cur of frontier) {
+      for (const nb of adj.get(cur) ?? []) {
+        if (!nearRoutes.has(nb)) { nearRoutes.add(nb); next.push(nb); }
+      }
+    }
+    frontier = next;
+  }
+  const prio = (c: CallChain): number =>
+    // 3: the route file's own imports (the diagram's backbone — these must
+    //    never be cut, no matter how many test files sort earlier).
+    // 2/1: depth material around routes. 0: everything else.
+    routeFiles.has(c.from) ? 3
+    : nearRoutes.has(c.to) ? 2
+    : nearRoutes.has(c.from) ? 1 : 0;
+  const scored = [...callChains].sort((a, b) => prio(b) - prio(a));
 
   const ctx: FlowContext = {
-    callChains: callChains.slice(0, 120),
+    // Generous raw budget: chains are never dumped raw anywhere (every
+    // user-facing sample caps separately), so keep everything found.
+    // Ordering still matters for the diagram: route files first, then
+    // their neighborhood, balanced across stacks.
+    callChains: balanceChains(scored, 2000),
     routes,
     eventFlows,
     dbAccess,
     functions,
     middlewareStack,
-    summary: buildSummary(routes, callChains, eventFlows, dbAccess, middlewareStack, functions),
+    summary: buildSummary(routes, scored, eventFlows, dbAccess, middlewareStack, functions),
   };
 
   return ctx;
 }
 
 // ── Route extraction ──────────────────────────────────────────────────────
+
+/** Round-robin cap across top-level folders (Backend/Frontend/...) so the
+ * 120-chain budget represents every stack instead of scan order. */
+function balanceChains(chains: CallChain[], cap: number): CallChain[] {
+  const buckets = new Map<string, CallChain[]>();
+  for (const c of chains) {
+    const g = c.from.split("/")[0];
+    if (!buckets.has(g)) buckets.set(g, []);
+    buckets.get(g)!.push(c);
+  }
+  const groups = [...buckets.values()];
+  const out: CallChain[] = [];
+  let i = 0;
+  while (out.length < cap) {
+    let progressed = false;
+    for (const g of groups) {
+      if (i < g.length && out.length < cap) { out.push(g[i]); progressed = true; }
+    }
+    if (!progressed) break;
+    i++;
+  }
+  return out;
+}
 
 function joinUrlPrefix(prefix: string, routePath: string): string {
   if (!prefix) return routePath || "/";
@@ -388,15 +446,34 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
   const chains: CallChain[] = [];
   const seen = new Set<string>();
 
-  // Build export index: exported name → file path
-  const exportIndex = new Map<string, string>();
+  // Build export index: exported name → file paths (TS + Python).
+  // Same name can live in many files; the importer picks same-top-folder first.
+  const exportIndex = new Map<string, string[]>();
+  const addExport = (name: string, path: string) => {
+    if (!name || name.length < 2) return;
+    const list = exportIndex.get(name) ?? [];
+    if (!list.includes(path)) list.push(path);
+    exportIndex.set(name, list);
+  };
   for (const file of files) {
     const re = /export\s+(?:default\s+)?(?:class|function|const|let|var)\s+(\w+)/g;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(file.content)) !== null) {
-      exportIndex.set(m[1], file.path);
+    while ((m = re.exec(file.content)) !== null) addExport(m[1], file.path);
+    if (file.language === "Python") {
+      const reDef = /^(?:async\s+)?def\s+(\w+)\s*\(/gm;
+      while ((m = reDef.exec(file.content)) !== null) {
+        if (!m[1].startsWith("_")) addExport(m[1], file.path);
+      }
+      const reCls = /^class\s+(\w+)/gm;
+      while ((m = reCls.exec(file.content)) !== null) addExport(m[1], file.path);
     }
   }
+  const lookupExport = (name: string, fromPath: string): string | undefined => {
+    const cands = exportIndex.get(name);
+    if (!cands?.length) return undefined;
+    const top = fromPath.split("/")[0];
+    return cands.find((p) => p.split("/")[0] === top) ?? cands[0];
+  };
 
   const pathSet = new Set(files.map((f) => f.path));
 
@@ -414,7 +491,7 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
       const importPath = m[2];
       const names = m[1].split(",").map((s) => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
       for (const name of names) {
-        const targetFile = resolveImportTarget(file.path, importPath, pathSet) ?? exportIndex.get(name);
+        const targetFile = resolveImportTarget(file.path, importPath, pathSet) ?? lookupExport(name, file.path);
         if (targetFile) push(file.path, targetFile, name, "import");
       }
     }
@@ -424,7 +501,7 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
     while ((m = defaultRe.exec(file.content)) !== null) {
       const name = m[1];
       if (/^(React|Vue|express|path|fs|http|https|os|util)$/.test(name)) continue;
-      const targetFile = resolveImportTarget(file.path, m[2], pathSet) ?? exportIndex.get(name);
+      const targetFile = resolveImportTarget(file.path, m[2], pathSet) ?? lookupExport(name, file.path);
       if (targetFile) push(file.path, targetFile, name, "import");
     }
 
@@ -468,11 +545,56 @@ function buildCallChains(files: WorkspaceFile[], routes: RouteDefinition[]): Cal
         }
       } else push(file.path, targetFile, "(re-export)", "import");
     }
+
+    // Python: from x.y import a, b / from . import sib / import x.y
+    // Resolved with the same language-aware resolver as the graph, so
+    // `from .visuals import f` hits the sibling .py, never a stray .ts.
+    if (file.language === "Python") {
+      const pyFromRe = /^from\s+([\w.]+)\s+import\s+(.+)/gm;
+      while ((m = pyFromRe.exec(file.content)) !== null) {
+        const raw = m[1].trim();
+        let rest = m[2];
+        if (rest.trim().startsWith("(") && !rest.includes(")")) {
+          // Parenthesized multi-line import: gather continuation lines so
+          // names (and chain methods) are real, not "(re-export)".
+          const after = file.content.slice(m.index + m[0].length).split("\n").slice(0, 15);
+          const collected: string[] = [];
+          for (const ln of after) {
+            const code = ln.split("#")[0];
+            if (code.includes(")")) { collected.push(code.slice(0, code.indexOf(")"))); break; }
+            collected.push(code);
+          }
+          rest = collected.join(",");
+        }
+        const names = rest.split(",")
+          .map((s) => s.trim().split(/\s+/)[0].replace(/^[*(]|[),;]*$/g, "").trim())
+          .filter((s) => /^[\w*]+$/.test(s) && s !== "*");
+        const targetFile = resolveImportPath(raw, file.path, pathSet, "Python");
+        if (!targetFile) continue;
+        if (/^\.+$/.test(raw)) {
+          // `from . import foo` — each name is the module; resolve per name
+          for (const nm of names) {
+            const t2 = resolveImportPath(`${raw}${nm}`, file.path, pathSet, "Python")
+              ?? lookupExport(nm, file.path);
+            if (t2) push(file.path, t2, nm, "import");
+          }
+        } else if (!names.length) {
+          push(file.path, targetFile, "(re-export)", "import");
+        } else {
+          for (const nm of names.slice(0, 8)) push(file.path, targetFile, nm, "import");
+        }
+      }
+      const pyImpRe = /^import\s+([\w.]+)/gm;
+      while ((m = pyImpRe.exec(file.content)) !== null) {
+        const targetFile = resolveImportPath(m[1].trim(), file.path, pathSet, "Python");
+        if (targetFile) push(file.path, targetFile, m[1].trim().split(".").pop()!, "import");
+      }
+    }
   }
 
   // Route → handler file chains
   for (const route of routes) {
-    const handlerFile = exportIndex.get(route.handler);
+    const handlerFile = lookupExport(route.handler, route.file);
     if (handlerFile && handlerFile !== route.file) {
       const key = `${route.file}→${handlerFile}→${route.handler}`;
       if (!seen.has(key)) { seen.add(key); chains.push({ from: route.file, to: handlerFile, method: route.handler, kind: "route" }); }
@@ -498,7 +620,7 @@ function buildSummary(
     return `${r.httpMethod} ${r.path}${ctrl}${mws} (${r.file})`;
   });
 
-  const chainLines = chains.slice(0, 40).map((c) =>
+  const chainLines = balanceChains(chains, 40).map((c) =>
     `${c.from.split("/").slice(-2).join("/")} → ${c.to.split("/").slice(-2).join("/")} via ${c.method}`
   );
 

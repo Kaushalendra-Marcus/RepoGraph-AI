@@ -47,11 +47,20 @@ Rules (graphify parity):
 - If the graph has no relevant vocabulary, say so plainly instead of guessing.`;
 
     this.history.push({ role: "user", content: question });
-    const response = await this.provider.chat([...this.history], systemPrompt);
+    let response: string;
+    try {
+      response = await this.provider.chat([...this.history], systemPrompt);
+    } catch (e) {
+      // Don't leave an orphan user message: two user turns in a row (or a
+      // leading assistant turn after trimming) makes Gemini/Anthropic 400.
+      this.history.pop();
+      throw e;
+    }
     this.history.push({ role: "assistant", content: response });
 
-    // Keep history manageable — trim oldest pairs first
-    if (this.history.length > 20) this.history = this.history.slice(-16);
+    // Keep history manageable — trim oldest pairs first. History always grows
+    // by 2 (user+assistant), so slice(-20) keeps 10 pairs starting with user.
+    if (this.history.length > 20) this.history = this.history.slice(-20);
 
     return response;
   }
@@ -175,11 +184,14 @@ Rules (graphify parity):
 
     const seen = new Set(starts);
     const outEdges: Array<{ source: string; target: string; relation: string; confidence: string; sourceFile?: string; sourceLocation?: number }> = [];
+    // Per-node fan-out cap: a god file with 500 importers would otherwise
+    // materialize 10k+ edges at depth 3 before the budget cut below runs.
+    const MAX_NEIGHBORS = 100;
     let frontier = new Set(starts);
     for (let d = 0; d < depth; d++) {
       const next = new Set<string>();
       for (const cur of frontier) {
-        for (const e of adj.get(cur) ?? []) {
+        for (const e of (adj.get(cur) ?? []).slice(0, MAX_NEIGHBORS)) {
           outEdges.push({ source: cur, target: e.to, relation: e.relation, confidence: e.confidence, sourceFile: e.sourceFile, sourceLocation: e.sourceLocation });
           if (!seen.has(e.to)) { seen.add(e.to); next.add(e.to); }
         }

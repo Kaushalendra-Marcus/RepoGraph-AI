@@ -1081,7 +1081,24 @@ export function buildCompleteDataFlow(
   const relatedFiles = new Set<string>();
   const fileNode = new Map<string, string>();
   let fCount = 0, nodeCount = 0;
-  const MAX_NODES = 64;
+  const MAX_NODES = 120;
+
+  // Rank next-hops so the diagram follows logic, not import order: files
+  // that themselves call further (services, pipelines) beat dead-end type
+  // imports; synthetic methods (re-export panorama) go last.
+  const rankHop = (n: CallChain): number => {
+    const outLen = (chainByFrom.get(n.to) ?? []).length;
+    const synth = /re-export|side-effect/i.test(n.method) ? -50 : 0;
+    const wiring = n.method === "router" ? -5 : 0;
+    return outLen * 10 + synth + wiring;
+  };
+  const topNexts = (file: string, k: number): CallChain[] =>
+    (chainByFrom.get(file) ?? [])
+      // `router` re-exports only wire modules together (already shown by
+      // E → R edges); they hide real service hops, so drop them here.
+      .filter((n) => n.to !== file && n.method !== "router")
+      .sort((a, b) => rankHop(b) - rankHop(a))
+      .slice(0, k);
 
   const fId = (path: string): string => {
     let id = fileNode.get(path);
@@ -1112,39 +1129,85 @@ export function buildCompleteDataFlow(
       lines.push(`  ${a} -->|${c.method.slice(0, 24)}| ${b}`);
     }
   } else {
+    // Shared DB node per data-touched file: converging routes show they hit
+    // the same layer instead of repeating identical diamonds.
+    const dbNode = new Map<string, string>();
+    let dCount = 0;
+    const emitDb = (fromId: string, file: string): void => {
+      const db = dbByFile.get(file);
+      if (!db) return;
+      let tag = dbNode.get(file);
+      if (!tag) {
+        if (nodeCount >= MAX_NODES) return;
+        tag = `D${dCount++}`;
+        dbNode.set(file, tag);
+        lines.push(`  ${tag}{"${shortFile(file)}: ${db.orm}"}`);
+        nodeCount++;
+      }
+      lines.push(`  ${fromId} --> ${tag}`);
+    };
+    // Pass 1: every route renders (E → R → [MW →] H), grouped by router file
+    // so each API area reads as one visual block. No route is ever starved
+    // by an early route's depth expansion.
+    const withNexts: { route: (typeof routes)[number]; i: number; hId: string; nexts: CallChain[] }[] = [];
+    const byFile = new Map<string, { route: (typeof routes)[number]; i: number }[]>();
     routes.forEach((route, i) => {
-      if (nodeCount >= MAX_NODES) return;
-      const rId = `R${i}`, hId = `H${i}`;
-      const routeLabel = `${route.httpMethod} ${route.path}`.slice(0, 48);
-      lines.push(`  E --> ${rId}["${routeLabel}"]`);
-      nodeCount++;
-      const handlerLabel = `${route.handler} (${shortFile(route.file)})`.slice(0, 48);
-      lines.push(`  ${rId} --> ${hId}["${handlerLabel}"]`);
-      nodeCount++;
-      relatedFiles.add(route.file);
-
-      const nexts = (chainByFrom.get(route.file) ?? [])
-        .filter((n) => n.to !== route.file)
-        .slice(0, 2);
-      if (!nexts.length) {
-        const db = dbByFile.get(route.file);
-        if (db && nodeCount < MAX_NODES) {
-          lines.push(`  ${hId} --> D${i}{"${db.orm}: ${db.operations.slice(0, 2).join(", ")}"}`);
+      const list = byFile.get(route.file) ?? [];
+      list.push({ route, i });
+      byFile.set(route.file, list);
+    });
+    let gCount = 0;
+    for (const [file, items] of byFile) {
+      if (nodeCount >= MAX_NODES) break;
+      lines.push(`  subgraph G${gCount++} ["${shortFile(file)}"]`);
+      for (const { route, i } of items) {
+        if (nodeCount >= MAX_NODES) break;
+        const rId = `R${i}`, hId = `H${i}`;
+        const routeLabel = `${route.httpMethod} ${route.path}`.slice(0, 48);
+        lines.push(`  E --> ${rId}["${routeLabel}"]`);
+        nodeCount++;
+        const handlerLabel = `${route.handler} (${shortFile(route.file)})`.slice(0, 48);
+        // Middleware runs before the handler: R → MW → H when declared.
+        const mws = route.middlewares.slice(0, 2).join(", ").slice(0, 30);
+        if (mws && nodeCount < MAX_NODES) {
+          lines.push(`  ${rId} --> W${i}["mw: ${mws}"]`);
+          lines.push(`  W${i} --> ${hId}["${handlerLabel}"]`);
+          nodeCount += 2;
+        } else {
+          lines.push(`  ${rId} --> ${hId}["${handlerLabel}"]`);
           nodeCount++;
+        }
+        relatedFiles.add(route.file);
+
+        const nexts = topNexts(route.file, 2);
+        if (!nexts.length) {
+          emitDb(hId, route.file);
+        } else {
+          withNexts.push({ route, i, hId, nexts });
         }
       }
-      nexts.forEach((nx, k) => {
-        if (nodeCount >= MAX_NODES) return;
+      lines.push(`  end`);
+    }
+    // Pass 2: next-hop files round-robin (one hop per route per round) so
+    // every route shows its services, not just the first few.
+    for (let round = 0; round < 2; round++) {
+      for (const { route, hId, nexts } of withNexts) {
+        const nx = nexts[round];
+        if (!nx || nodeCount >= MAX_NODES) continue;
         const sId = fId(nx.to);
         lines.push(`  ${hId} -->|${nx.method.slice(0, 24)}| ${sId}`);
-        nodeCount++;
-        const db = dbByFile.get(nx.to);
-        if (db && nodeCount < MAX_NODES) {
-          lines.push(`  ${sId} --> D${i}_${k}{"${db.orm}: ${db.operations.slice(0, 2).join(", ")}"}`);
-          nodeCount++;
-        }
-      });
-    });
+        // Depth 2: what the service file itself calls (the pipeline path,
+        // e.g. route → langchain_pipeline → groq_service).
+        const deeper = topNexts(nx.to, 3).filter((d) => d.to !== route.file).slice(0, 2);
+        deeper.forEach((dd) => {
+          if (nodeCount >= MAX_NODES) return;
+          const tId = fId(dd.to);
+          if (tId === sId) return;
+          lines.push(`  ${sId} -->|${dd.method.slice(0, 24)}| ${tId}`);
+        });
+        emitDb(sId, nx.to);
+      }
+    }
   }
 
   return {

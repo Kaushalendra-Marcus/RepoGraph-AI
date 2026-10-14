@@ -103,7 +103,20 @@ function extractImports(content: string, lang: string): ImportMatch[] {
     const r1 = /^from\s+([\w.]+)\s+import\s+(.+)/gm;
     while ((m = r1.exec(content)) !== null) {
       const raw = m[1].trim();
-      const names = m[2].trim();
+      let names = m[2].trim();
+      if (names.startsWith("(") && !names.includes(")")) {
+        // Parenthesized multi-line import: gather continuation lines so the
+        // edge label lists real names instead of a stray "(".
+        const after = content.slice(m.index + m[0].length).split("\n").slice(0, 15);
+        const collected: string[] = [];
+        for (const ln of after) {
+          const code = ln.split("#")[0];
+          if (code.includes(")")) { collected.push(code.slice(0, code.indexOf(")"))); break; }
+          collected.push(code);
+        }
+        names = collected.map((s) => s.trim()).filter(Boolean).join(", ");
+        names = names.split(",").map((s) => s.trim()).filter(Boolean).join(", ");
+      }
       // `from . import foo, bar` — the path alone is just dots; expand per name
       // so each resolves to a sibling module instead of the package dir.
       if (/^\.+$/.test(raw)) {
@@ -327,6 +340,16 @@ function resolveImportWithProvenance(
   return sameTop
     ? { path: hit.path, confidence: 'INFERRED', score: 0.85 }
     : { path: hit.path, confidence: 'AMBIGUOUS', score: 0.3 };
+}
+
+/**
+ * Path-only wrapper for consumers (flow analysis) that need edge targets
+ * without provenance bookkeeping. Same resolver, same language rules.
+ */
+export function resolveImportPath(
+  imp: string, fromPath: string, allPaths: Set<string>, fromLang?: string
+): string | null {
+  return resolveImportWithProvenance(imp, fromPath, allPaths, fromLang)?.path ?? null;
 }
 
 function lineOf(content: string, index: number): number {
@@ -590,7 +613,7 @@ export function buildDependencyGraph(
       if (edgeSet.has(key)) continue;
       edgeSet.add(key);
       edges.push({
-        source: file.path, target: resolved, label: match.names?.slice(0, 40),
+        source: file.path, target: resolved, label: match.names?.split("\n")[0].slice(0, 60),
         relation: 'imports', confidence: r.confidence, confidenceScore: r.score,
         sourceLocation: importLines.get(match.path),
       });

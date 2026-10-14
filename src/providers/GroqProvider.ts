@@ -18,36 +18,56 @@ export class GroqProvider implements AIProvider {
     return this.sendWithRetry(msgs, estimatedTokens);
   }
 
+  private static readonly REQUEST_TIMEOUT_MS = 60_000;
+  private static readonly MAX_ERROR_BODY = 500;
+
   private async sendWithRetry(messages: Message[], estimatedTokens: number): Promise<string> {
     const maxAttempts = 2;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.config.model || "llama-3.3-70b-versatile",
-          messages,
-          max_tokens: 2048,
-          temperature: 0.3,
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.config.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.config.model || "llama-3.3-70b-versatile",
+            messages,
+            max_tokens: 2048,
+            temperature: 0.3,
+          }),
+          signal: AbortSignal.timeout(GroqProvider.REQUEST_TIMEOUT_MS),
+        });
+      } catch (e: unknown) {
+        // Network failure or 60s timeout — retry once, then surface.
+        if (attempt === maxAttempts) throw new Error(`Groq request failed: ${this.errOf(e)}`);
+        await this.sleep(2_000);
+        await this.waitForBudget(estimatedTokens);
+        continue;
+      }
 
       if (res.ok) {
         const data = await res.json() as any;
-        this.recordUsage(estimatedTokens);
-        return data.choices[0].message.content;
+        const text = data?.choices?.[0]?.message?.content;
+        // Prefer the API's actual token usage over our estimate for throttling.
+        const used = typeof data?.usage?.total_tokens === "number" ? data.usage.total_tokens : estimatedTokens;
+        this.recordUsage(used);
+        if (typeof text !== "string" || !text) {
+          throw new Error(`Groq API error: empty response content (status ${res.status})`);
+        }
+        return text;
       }
 
       const body = await res.text();
+      const short = this.errBody(body);
       const retryAfter = this.parseRetryAfter(res.headers.get("retry-after")) ?? this.parseRetryAfterFromBody(body);
       const rateLimitHit = res.status === 429 || /rate_limit_exceeded|tokens per minute|TPM/i.test(body);
 
       if (!rateLimitHit || attempt === maxAttempts) {
-        throw new Error(`Groq API error: ${body}`);
+        throw new Error(`Groq API error (status ${res.status}): ${short}`);
       }
 
       const delay = retryAfter ?? 15_000;
@@ -73,6 +93,13 @@ export class GroqProvider implements AIProvider {
   }
 
   private async waitForBudget(requestTokens: number) {
+    // A single request larger than the whole per-minute budget can never
+    // fit — fail fast instead of sleeping forever (livelock).
+    if (requestTokens > GroqProvider.TPM_LIMIT) {
+      throw new Error(
+        `Groq request (~${requestTokens} tokens) exceeds the per-minute budget of ${GroqProvider.TPM_LIMIT} tokens. Shorten the context or re-analyze a smaller scope.`
+      );
+    }
     const key = this.bucketKey();
     while (true) {
       const now = Date.now();
@@ -114,6 +141,16 @@ export class GroqProvider implements AIProvider {
 
   private bucketKey(): string {
     return `${this.config.name}:${this.config.apiKey || ""}:${this.config.model || "llama-3.3-70b-versatile"}`;
+  }
+
+  private errBody(body: string): string {
+    return body.length > GroqProvider.MAX_ERROR_BODY
+      ? body.slice(0, GroqProvider.MAX_ERROR_BODY) + "…(truncated)"
+      : body;
+  }
+
+  private errOf(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
   }
 
   private sleep(ms: number) {

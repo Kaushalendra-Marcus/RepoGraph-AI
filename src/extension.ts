@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import { RepoGraphPanel } from "./panel/RepoGraphPanel";
 
+// Startup auto-index timer — tracked so deactivate() can cancel it instead of
+// firing ensureGraphIndexed on a disposed provider after a quick disable.
+let startupTimer: NodeJS.Timeout | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
   // Register webview view provider
   const provider = new RepoGraphPanel(context);
@@ -43,7 +47,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Auto-index on folder open — no `/graphify .` needed.
   // Delayed slightly so VS Code finishes restoring the workspace first.
-  setTimeout(() => {
+  startupTimer = setTimeout(() => {
+    startupTimer = undefined;
     void provider.ensureGraphIndexed("startup").catch(() => {
       // Silent on startup: panel shows empty state, user can still click Analyze.
     });
@@ -71,4 +76,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(watcher);
 }
 
-export function deactivate() {}
+export function deactivate() {
+  if (startupTimer) {
+    clearTimeout(startupTimer);
+    startupTimer = undefined;
+  }
+}
