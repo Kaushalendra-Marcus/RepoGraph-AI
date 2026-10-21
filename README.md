@@ -1,8 +1,10 @@
 <div align="center">
 
-<img src="./public/repograph-ai.png" alt="RepoGraph AI" width="100" height="100">
+<img src="./public/assets/favicon.svg" alt="RepoGraph AI" width="100" height="100">
 
 # RepoGraph AI
+
+[![RepoGraph AI — Know every file. Cite every line.](./public/assets/og-image.png)](https://repograph.kaushalendra.me/)
 
 **Understand any codebase in minutes, not days — with one click.**
 
@@ -31,7 +33,7 @@ your machine.
 
 <div align="center">
 
-<video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.png" width="640"></video>
+<video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.jpg" width="640"></video>
 
 *57-second walkthrough from inside VS Code — one-click analysis → the dependency graph → data-flow → the context file your AI agent gets.*
 

@@ -6,7 +6,7 @@
   "publisher": "kaushalendra",
   "license": "MIT",
 
-  "icon": "public/repograph-ai.svg",
+  "icon": "public/assets/icon-512.png",
 
   "repository": {
     "type": "git",
