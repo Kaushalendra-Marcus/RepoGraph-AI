@@ -20,10 +20,10 @@ locally, on your machine.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.116.0-blue)](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai)
-[![Open Source](https://img.shields.io/badge/Open%20Source-yes-brightgreen)](https://github.com/Kaushalendra-Marcus/CodeGraph-AI)
+[![Open Source](https://img.shields.io/badge/Open%20Source-yes-brightgreen)](https://github.com/Kaushalendra-Marcus/RepoGraph-AI)
 [![Website](https://img.shields.io/badge/Website-repograph.kaushalendra.me-7c3aed)](https://repograph.kaushalendra.me/)
 
-[Website](https://repograph.kaushalendra.me/) · [Install](#installation) · [Quick Start](#quick-start) · [Features](#features-in-depth) · [Compare](#compare) · [Report a Bug](https://github.com/Kaushalendra-Marcus/CodeGraph-AI/issues)
+[Website](https://repograph.kaushalendra.me/) · [Install](#installation) · [Quick Start](#quick-start) · [Features](#features-in-depth) · [Compare](#compare) · [Report a Bug](https://github.com/Kaushalendra-Marcus/RepoGraph-AI/issues)
 
 </div>
 
@@ -391,7 +391,7 @@ repograph-ai/
 **Prerequisites:** Node.js 18+, VS Code 1.85+
 
 ```bash
-git clone https://github.com/Kaushalendra-Marcus/CodeGraph-AI
+git clone https://github.com/Kaushalendra-Marcus/RepoGraph-AI
 cd repograph-ai
 npm install
 npm run compile
@@ -483,7 +483,7 @@ The grounding validator rejected it — its labels didn't match real routes, sym
 - **`trace.json` artifact** — the full path saved per workspace; diff it across refactors, and let coding agents consume the typed trace records directly.
 - **Flow view in-panel** — click any hop to jump straight to the line.
 
-Follow the [GitHub repo](https://github.com/Kaushalendra-Marcus/CodeGraph-AI) to catch the release.
+Follow the [GitHub repo](https://github.com/Kaushalendra-Marcus/RepoGraph-AI) to catch the release.
 
 ---
 
@@ -517,7 +517,7 @@ Built by a dev, for devs. No team, no roadmap committee: RepoGraph AI is designe
 maintained in the open by **Kaushalendra Yadav** — AI engineer building tools that make
 codebases legible, and the person behind every release.
 
-[GitHub](https://github.com/Kaushalendra-Marcus/CodeGraph-AI) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai) · [Website](https://repograph.kaushalendra.me/)
+[GitHub](https://github.com/Kaushalendra-Marcus/RepoGraph-AI) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai) · [Website](https://repograph.kaushalendra.me/)
 
 ---
 
