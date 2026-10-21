@@ -31,9 +31,9 @@ your machine.
 
 <div align="center">
 
-<video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.jpg" width="640"></video>
+<video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.png" width="640"></video>
 
-*16-second walkthrough: open a folder → auto-indexed graph → flow diagrams → Q&A — no setup, no CLI.*
+*57-second walkthrough from inside VS Code — one-click analysis → the dependency graph → data-flow → the context file your AI agent gets.*
 
 Video not playing? <a href="./public/assets/demo.mp4">Open it directly</a>.
 
@@ -106,6 +106,15 @@ compare how the codebase looked before and after a refactor, and delete records 
 
 Pick one of five AI providers, paste a key (stored in VS Code's encrypted `SecretStorage`),
 choose/change model names, and toggle auto-indexing. Keys never leave your machine.
+
+---
+
+## Screenshots
+
+| Dependency Graph | File Summary | Q&A |
+|:---:|:---:|:---:|
+| ![Dependency Graph](./public/assets/screenshot-graph.png) | ![File Summary](./public/assets/screenshot-summary.png) | ![Q&A](./public/assets/screenshot-qa.png) |
+| Every file and import mapped — click a node for details, or flip to the 3D sphere | Plain-English per-file explanations with exports and key functions | Ask anything — grounded answers with file citations |
 
 ---
 
