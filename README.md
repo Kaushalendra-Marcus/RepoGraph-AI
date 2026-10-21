@@ -33,11 +33,11 @@ your machine.
 
 <div align="center">
 
-<video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.jpg" width="640"></video>
+<a href="https://repograph.kaushalendra.me/#demo">
+  <img src="./public/assets/demo-poster.jpg" alt="RepoGraph AI — 57-second walkthrough: the dependency graph spheres up right after a one-click analysis" width="640">
+</a>
 
-*57-second walkthrough from inside VS Code — one-click analysis → the dependency graph → data-flow → the context file your AI agent gets.*
-
-Video not playing? <a href="./public/assets/demo.mp4">Open it directly</a>.
+**▶ Click to watch the 57-second walkthrough** — one-click analysis → dependency graph → data-flow → the context file your AI agent gets. Hosted on the [website](https://repograph.kaushalendra.me/).
 
 </div>
 

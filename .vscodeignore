@@ -1,9 +1,21 @@
+# Dev sources — compiled output lives in out/
 .vscode/**
 .vscode-test/**
 src/**
-.gitignore
-.eslintrc.json
-**/*.map
+scripts/**
+docs/**
+.git/**
+.github/**
 node_modules/**
 tsconfig.json
+package-lock.json
+
+# Maps — publish the built JS only
+**/*.map
+
+# Repo hygiene
+.gitignore
+.eslintrc.json
 vsc-extension-quickstart.md
+CONTRIBUTING.md
+tmp-webview.js
