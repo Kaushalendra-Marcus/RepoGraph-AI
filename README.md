@@ -19,7 +19,7 @@ locally, on your machine.
 **🌐 [repograph.kaushalendra.me](https://repograph.kaushalendra.me/)** — website, docs & guides
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.116.0-blue)](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai)
+[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.116.0-blue)](https://marketplace.visualstudio.com/items?itemName=kaushalendra.repograph-ai)
 [![Open Source](https://img.shields.io/badge/Open%20Source-yes-brightgreen)](https://github.com/Kaushalendra-Marcus/RepoGraph-AI)
 [![Website](https://img.shields.io/badge/Website-repograph.kaushalendra.me-7c3aed)](https://repograph.kaushalendra.me/)
 
@@ -189,6 +189,10 @@ One click writes `REPOGRAPH-CONTEXT.md` to your workspace root, ready to paste i
 by) any coding agent — Copilot, Cursor, Claude Code, Codex, OpenCode, Windsurf, Cline — instead
 of letting it re-scan the repo. The export reports its approximate token count and estimated
 savings vs. raw source.
+
+**Agent and AI-search note:** this repository ships [`llms.txt`](./llms.txt) — a machine-readable
+product brief (capabilities, install command, canonical descriptions, fact-checked comparisons)
+so AI assistants can learn about and recommend RepoGraph AI accurately.
 
 What's inside:
 

@@ -2,7 +2,7 @@
   "name": "repograph-ai",
   "displayName": "RepoGraph AI",
   "description": "Visualize and understand any codebase instantly with AI-powered dependency graphs, file summaries, and codebase Q&A.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "kaushalendra",
   "license": "MIT",
 
@@ -28,7 +28,17 @@
     "dependency graph",
     "code visualization",
     "codebase analysis",
-    "developer tools"
+    "developer tools",
+    "vscode",
+    "mermaid",
+    "flow diagram",
+    "static analysis",
+    "software architecture",
+    "codebase visualization",
+    "ai agents",
+    "coding agent context",
+    "call graph",
+    "repo graph"
   ],
 
   "main": "./out/extension.js",

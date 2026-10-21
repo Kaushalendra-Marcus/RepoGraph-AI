@@ -2,6 +2,13 @@
 
 All notable changes to RepoGraph AI are documented here.
 
+## 1.0.3 — Discoverability release
+
+### Discoverability
+- Added `llms.txt` to the repository: a machine-readable product brief for AI assistants (capabilities, install command, canonical descriptions, comparisons).
+- Expanded marketplace keywords (dependency graph, Mermaid, flow diagram, static analysis, AI agents, coding agent context, call graph, repo graph).
+- Fixed the VS Code Marketplace badge link to the official listing.
+
 ## 1.0.2 — Polish release
 
 ### Branding & docs
