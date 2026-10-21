@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./public/assets/favicon.svg" alt="RepoGraph AI" width="100" height="100">
+<img src="./public/assets/logo.png" alt="RepoGraph AI" width="100" height="100">
 
 # RepoGraph AI
 
@@ -10,9 +10,9 @@
 
 A VS Code extension that auto-indexes your workspace the moment you open it, maps every file
 relationship with provenance-tracked edges, renders 2D/3D dependency graphs and multi-dialect
-flow diagrams, answers questions about your code with citations, and exports a compact context
-file your AI coding agent can read instead of re-scanning your repo — all running locally, on
-your machine.
+flow diagrams, answers questions about your code with citations, and exports an AI graph —
+compact context file your coding agent can read instead of re-scanning your repo — all running
+locally, on your machine.
 
 **Know every file. Cite every line.**
 
@@ -23,7 +23,7 @@ your machine.
 [![Open Source](https://img.shields.io/badge/Open%20Source-yes-brightgreen)](https://github.com/Kaushalendra-Marcus/CodeGraph-AI)
 [![Website](https://img.shields.io/badge/Website-repograph.kaushalendra.me-7c3aed)](https://repograph.kaushalendra.me/)
 
-[Website](https://repograph.kaushalendra.me/) · [Install](#installation) · [Quick Start](#quick-start) · [Features](#features) · [How It Works](#how-it-works) · [Report a Bug](https://github.com/Kaushalendra-Marcus/CodeGraph-AI/issues)
+[Website](https://repograph.kaushalendra.me/) · [Install](#installation) · [Quick Start](#quick-start) · [Features](#features-in-depth) · [Compare](#compare) · [Report a Bug](https://github.com/Kaushalendra-Marcus/CodeGraph-AI/issues)
 
 </div>
 
@@ -37,17 +37,28 @@ your machine.
   <img src="./public/assets/demo-poster.jpg" alt="RepoGraph AI — 57-second walkthrough: the dependency graph spheres up right after a one-click analysis" width="640">
 </a>
 
-**▶ Click to watch the 57-second walkthrough** — one-click analysis → dependency graph → data-flow → the context file your AI agent gets. Hosted on the [website](https://repograph.kaushalendra.me/).
+**▶ Click to watch the 57-second walkthrough** — one-click analysis → the dependency graph → the data-flow map → the context file your AI agent gets. Hosted on the [website](https://repograph.kaushalendra.me/).
 
 </div>
+
+**The walkthrough's five chapters:**
+
+| # | At | Chapter |
+|:---:|:---:|---|
+| 01 | 0:00 | Analyze workspace |
+| 02 | 0:06 | Dependency graph |
+| 03 | 0:30 | Data flow |
+| 04 | 0:40 | Agent context file |
+| 05 | 0:51 | Your own AI provider |
 
 ---
 
 ## Why RepoGraph AI
 
-When you join a new project or explore open source, the hardest part is not reading individual
-files — it's understanding how everything connects. Most code-graph tools solve this by asking
-you to run a CLI, index a database, or open a browser tab. RepoGraph AI takes a different path:
+RepoGraph AI turns any repository into an **AI coding agent graph** — a machine-readable map with
+files as nodes and imports & calls as typed edges, so both you and your AI agent can navigate,
+summarize, and question the codebase with full structural context. Most code-graph tools ask you
+to run a CLI, index a database, or open a browser tab. RepoGraph AI takes a different path:
 
 - **Zero setup.** Open any folder and the graph builds itself — no CLI, no config files, no per-project reruns, no terminal.
 - **Honest by design.** Every edge carries a provenance label — `EXTRACTED` (read directly from source), `INFERRED` (derived by analysis), or `AMBIGUOUS` (uncertain, low confidence). The graph always tells you what it *knows* versus what it *guessed*.
@@ -86,7 +97,7 @@ The reading tab — and the thinking one.
 
 - **Repo overview**: plain-English overview, architecture description, tech stack, entry points, and key modules — with a heuristic version available even with no API key.
 - **File cards**: the most important files, each with its purpose, exports, and key functions. No more opening random files to find where things live.
-- **Q&A chat**: ask anything — *"where is authentication handled?"*, *"which files touch the database?"*, *"how does routing work?"*. The agent expands your question against the codebase's actual vocabulary, walks the dependency graph up to **3 hops**, keeps the answer within a token budget, and **cites the files it used**. When the graph can't support an answer, it says so instead of inventing one.
+- **Q&A chat**: ask anything — *"where is authentication handled?"*, *"which files touch the database?"*, *"how does routing work?"*. The agent expands your question against the codebase's actual vocabulary, walks the dependency graph up to **3 hops**, keeps the answer within a token budget, and **cites the files it used**. Multi-turn, with history — paste any answer straight into your agent. When the graph can't support an answer, it says so instead of inventing one.
 - **Agent-context export** button lives here too.
 
 ### 4 · Flow
@@ -113,10 +124,13 @@ choose/change model names, and toggle auto-indexing. Keys never leave your machi
 
 ## Screenshots
 
-| Dependency Graph | File Summary | Q&A |
-|:---:|:---:|:---:|
-| ![Dependency Graph](./public/assets/screenshot-graph.png) | ![File Summary](./public/assets/screenshot-summary.png) | ![Q&A](./public/assets/screenshot-qa.png) |
-| Every file and import mapped — click a node for details, or flip to the 3D sphere | Plain-English per-file explanations with exports and key functions | Ask anything — grounded answers with file citations |
+| Dependency Graph (3D) | Communities (2D) |
+|:---:|:---:|
+| ![Dependency Graph — 3D sphere view](./public/assets/buildifylabs-dependency-graph.png) | ![Dependency Graph — 2D clusters](./public/assets/buildifylabs-dependency-graph2d.png) |
+| The whole repo on a sphere — frontend (gold) and backend (blue) hemispheres, hover to trace imports | In 2D the same graph falls apart into natural clusters — backend and frontend separate on their own |
+| **Complete data-flow** | **Settings** |
+| ![Complete data-flow](./public/assets/complete_data_flow.png) | ![Settings — AI providers](./public/assets/settings-providers.png) |
+| Every route → middleware → handler → next hop, exported from the Flow tab — saved as `.mmd`/`.svg`/`.json` with one click | Five AI providers with recommended models, FREE/PAID badges — keys stay in VS Code encrypted SecretStorage |
 
 ---
 
@@ -127,7 +141,7 @@ choose/change model names, and toggle auto-indexing. Keys never leave your machi
 The defining feature: **you never run anything**.
 
 - Open a folder → RepoGraph scans it and builds the graph within seconds. The status bar shows live index state.
-- A `FileSystemWatcher` watches your code files; save a change and the graph updates after a short ~1.5 s debounce — always current, never in your way.
+- A `FileSystemWatcher` watches your code files; save a change and the graph updates after a short ~1.5 s debounce — always current, never in your way. No per-project config, no server to keep running: install once, open any folder, hit **Analyze Workspace**, and the graph is ready in seconds — switch projects and repeat, same flow every time.
 - Results are cached to disk with a **content-hashed manifest**: on reopen, only files whose contents actually changed are reprocessed, so the same project loads near-instantly (cache lives in VS Code's storage dir; no artifacts polluting your repo).
 - Manual control whenever you want it: `RepoGraph AI: Reindex Workspace` forces a full rebuild, and the `repograph.autoIndex` setting can turn the magic off.
 
@@ -212,7 +226,8 @@ re-fixing things you already fixed and importing modules that don't exist.
 
 **From the VS Code Marketplace:**
 
-Search `RepoGraph AI` in the Extensions panel (`Ctrl+Shift+X`) and click Install — or paste this into the Command Palette:
+Search `RepoGraph AI` in the Extensions panel (`Ctrl+Shift+X`) and click Install — or paste this
+into the Command Palette:
 
 ```text
 ext install kaushalendra.repograph-ai
@@ -237,18 +252,18 @@ folder — watch the status bar. No CLI, no setup, no per-project reruns.
 - **Flow tab** — end-to-end, sequence, and class diagrams with a guided tour
 - Export **`REPOGRAPH-CONTEXT.md`** for your coding agent from Analyze or Insights
 
-**Step 3 — (Optional) Add AI.** Open **Settings**, pick a provider, paste your key. It's stored
-in VS Code's encrypted SecretStorage and never leaves your machine.
-Get a free Groq key: https://console.groq.com/keys
+**Step 3 — (Optional) Add AI.** Open the RepoGraph panel → **Settings** → pick a provider →
+paste your key. It's stored encrypted via your OS keychain and never leaves your machine.
+Start free with Groq: https://console.groq.com/keys
 
 **Step 4 — Analyze with AI.** Click **Analyze Workspace** for AI summaries and full Q&A.
-A medium-sized project takes one to two minutes.
+Most repos of 50–500 files finish in under a minute.
 
 **Commands & settings:**
 
 | Item | What it does |
 |---|---|
-| `RepoGraph AI: Open Panel` | Focus the RepoGraph sidebar |
+| `Ctrl+Shift+P → RepoGraph AI: Open Panel` | Focus the RepoGraph sidebar |
 | `RepoGraph AI: Reindex Workspace` | Force a full graph rebuild |
 | `repograph.autoIndex` (setting, default `true`) | Auto-build/update the graph on folder open and file save |
 
@@ -256,23 +271,25 @@ A medium-sized project takes one to two minutes.
 
 ## Supported AI Providers
 
-| Provider | Cost | Best for |
-|---|---|---|
-| **Groq** | Free tier | Best starting point. Fast LPU-backed cloud inference; generous free limits. Free key: console.groq.com/keys |
-| **Ollama** | Completely free | Privacy-first. Runs 100% on your machine — fully offline, no internet needed. |
-| **Google Gemini** | Free quota | gemini-1.5-flash has a good free tier. |
-| **Anthropic Claude** | Paid | Highest quality answers and summaries. |
-| **OpenAI** | Paid | gpt-4o-mini is cheap and reliable. |
+Works with the provider you already pay for. All five support custom model names, keys stay in
+your keychain, and switching providers never requires re-analyzing your workspace.
 
-Custom model names work on every provider, and switching providers never requires re-analyzing your workspace.
+| Provider | Cost | Default model | Best for | Auth |
+|---|---|---|---|---|
+| **Groq** | Free tier | `llama-3.3-70b-versatile` | Instant answers. Fast LPU-backed cloud inference; generous free limits to start. | API key |
+| **Ollama** | Completely free | `qwen3` on `http://localhost:11434` | Offline privacy. Run open models on your own machine — no key, no cloud, no source code leaving the laptop. | None required |
+| **Google Gemini** | Free quota | `gemini-2.5-flash` | Long context for whole-repo questions. The free quota is enough to get started. | API key |
+| **Anthropic Claude** | Paid | `claude-sonnet-4-5` | Careful reasoning and precise `file:line` citations for complex refactors and deep codebases. | API key |
+| **OpenAI** | Paid | `gpt-4o-mini` | Battle-tested consistency for summaries, Q&A and docs at scale. | API key |
 
-You can also type any custom model name manually for any provider.
+Model names are configurable per provider via `repograph.<provider>.model` (e.g.
+`repograph.groq.model`) and `repograph.<provider>.baseUrl` (e.g. for Ollama).
 
 ---
 
 ## Supported Languages
 
-TypeScript · JavaScript · Python · Go · Rust · Java · Kotlin · C · C++ · C# · Ruby · PHP · Swift · Vue · Svelte · Astro · GraphQL · Prisma · SQL · Shell
+20+: TypeScript · JavaScript · Python · Go · Rust · Java · Kotlin · C/C++ · C# · Ruby · PHP · Swift · Vue · Svelte · Astro · GraphQL · Prisma · SQL · Shell
 
 ---
 
@@ -330,8 +347,7 @@ Webview Panel (6 tabs)
   Analyze · Graph · Insights · Flow · History · Settings
 ```
 
-The extension never sends your source code to any third-party server other than the AI provider
-you explicitly configure. It has no backend, no telemetry, and no analytics.
+The entire pipeline runs locally. The only external call is to the AI provider you choose.
 
 ---
 
@@ -363,7 +379,7 @@ repograph-ai/
 │       └── webview/                # Tab HTML, scripts (graph/flow/messaging/ui), styles
 ├── docs/                           # Architecture deep-dives (see docs/README.md)
 ├── scripts/build-webview.js        # Assembles the webview bundle
-├── public/                         # Icon, demo video, logos, screenshots
+├── public/                         # Icon, demo poster, logos, screenshots
 ├── package.json                    # Extension manifest
 └── tsconfig.json
 ```
@@ -430,20 +446,29 @@ Deeper dives live in [`docs/`](docs/README.md) and on the
 **Is RepoGraph AI really free?**
 Yes — 100% free and MIT-licensed. Bring your own key from Groq (free tier) or Ollama (fully local). No subscription, no account, no paywall.
 
-**Does it need internet?**
-No. Indexing, graph building, flow extraction, caching, and exports are fully offline. Internet is only used if you configure a cloud AI provider.
+**Does my code get sent to a server?**
+No. There is no backend. The only external call is to the AI provider you configure. Everything else stays on your machine.
 
-**Is my code sent anywhere?**
-Only to the AI provider you explicitly choose, and only if you configure one. RepoGraph AI itself has no server.
+**Which AI providers are supported?**
+Groq, Ollama, Gemini, Claude and OpenAI — with custom model names. Switch providers anytime without re-analyzing.
 
-**How is this different from other code-graph tools?**
-Paid/desktop competitors typically require a CLI run, a local database process, or a browser app — and their AI diagrams trust whatever the model writes. RepoGraph AI is one-click inside VS Code, works fully without AI, and validates every AI diagram against the static index so nothing gets invented.
+**What is an AI coding agent graph?**
+A machine-readable map of a repository: files as nodes, imports and calls as typed edges. RepoGraph AI builds exactly this graph for any repo, so both you and an AI coding agent can navigate, summarize, and question the codebase with full structural context.
 
-**Can coding agents use the graph?**
-Yes — export `REPOGRAPH-CONTEXT.md` and hand it to your agent (Cursor, Copilot, Claude Code, Codex, OpenCode, Windsurf, Cline), or just point the agent at the file in your repo. It reads the map instead of re-scanning the code — cited context, zero wasted tokens.
+**Can coding agents use the RepoGraph agent graph?**
+Yes. Export `REPOGRAPH-CONTEXT.md` and point your agent at it (Cursor, Copilot, Claude Code, Codex, OpenCode, Windsurf, Cline) — cited structure in, no wasted tokens re-reading files. v2.0 goes further: the flow tracer will export the repo graph as typed trace records agents can consume directly.
 
-**Can I use it on a huge repo?**
-Yes — file filtering skips generated output, graphs cluster into communities, and the disk cache means large projects index incrementally.
+**How large a codebase can it handle?**
+Files are processed in batches with generated code skipped. Most repos of 50–500 files finish in under a minute.
+
+**I'm new to a project. Where do I start?**
+Analyze the workspace once: the dependency graph shows you what connects to what, the repo overview explains the architecture, and Q&A answers "where is X handled?" with file references. Most developers go from zero to productive in a single sitting.
+
+**How is it different from other repo graph tools?**
+Most repo graph tools only draw static pictures. RepoGraph AI combines a live dependency graph, per-file AI summaries, multi-turn codebase Q&A, five AI providers, and zero telemetry — free and open source, entirely inside VS Code.
+
+**Which languages are supported?**
+20+: TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, C/C++, C#, Ruby, PHP, Swift, Vue, Svelte, Astro, GraphQL, Prisma, SQL, Shell.
 
 **Why did my AI diagram disappear after analysis?**
 The grounding validator rejected it — its labels didn't match real routes, symbols, files, or methods in your repo. The deterministic fallback you see instead is the honest version.
@@ -455,7 +480,7 @@ The grounding validator rejected it — its labels didn't match real routes, sym
 **Flow tracing is coming** — not just what a file imports, but where each value travels:
 
 - **Hop-by-hop tracer** — walks call edges across files, every hop declaring its input and output, so the whole path is auditable.
-- **`trace.json` artifact** — the full path saved per workspace; diff it across refactors.
+- **`trace.json` artifact** — the full path saved per workspace; diff it across refactors, and let coding agents consume the typed trace records directly.
 - **Flow view in-panel** — click any hop to jump straight to the line.
 
 Follow the [GitHub repo](https://github.com/Kaushalendra-Marcus/CodeGraph-AI) to catch the release.
@@ -464,20 +489,23 @@ Follow the [GitHub repo](https://github.com/Kaushalendra-Marcus/CodeGraph-AI) to
 
 ## Privacy
 
-Your code stays yours.
+Your code never leaves your machine. No backend. No account. No tracking. The only network
+request is to the AI provider you configure.
 
 | Data | Where it goes |
 |---|---|
 | Your workspace | Analyzed locally, in VS Code only |
 | Graph + summaries | Local storage |
 | File snippets | AI provider only (the one you configure) |
-| Our servers | We don't have any |
-| Analytics / account | None, never |
+| Our servers | ✕ do not exist |
+| Analytics | ✕ none |
+| Account required | ✕ never |
 
-- API keys are stored in VS Code's `SecretStorage` (OS-level encryption), never plaintext on disk
-- Source code is only sent to the AI provider you choose, for analysis only
-- No telemetry, no usage tracking, no external servers
-- Open source and auditable — every line is public on GitHub
+Key guarantees:
+
+- **Encrypted key storage** — keys live in VS Code `SecretStorage` via the OS keychain; never plaintext on disk
+- **Zero telemetry** — no analytics, no crash reports; fully offline except AI calls
+- **Open source & auditable** — every line public on GitHub; read it, verify it, fork it
 - Everything except the optional AI call runs entirely on your machine — scanning, graph
   building, flow extraction, caching, and exports are all local
 
@@ -485,9 +513,9 @@ Your code stays yours.
 
 ## Creator
 
-RepoGraph AI is designed, built, and maintained in the open by
-**Kaushalendra Yadav** — AI engineer building tools that make codebases legible.
-No team, no roadmap committee: every release is public and MIT-licensed.
+Built by a dev, for devs. No team, no roadmap committee: RepoGraph AI is designed, built, and
+maintained in the open by **Kaushalendra Yadav** — AI engineer building tools that make
+codebases legible, and the person behind every release.
 
 [GitHub](https://github.com/Kaushalendra-Marcus/CodeGraph-AI) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai) · [Website](https://repograph.kaushalendra.me/)
 
@@ -523,7 +551,9 @@ MIT — free to use, modify, and distribute. See [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-Built for developers who have too many tabs open and not enough time.
+**Stop reading files. Start understanding code.** ★★★★★ Loved by devs onboarding to new codebases
+
+**[Install from the Marketplace](https://marketplace.visualstudio.com/items?itemName=repograph.repograph-ai)** — free, open source, no account
 
 **[repograph.kaushalendra.me](https://repograph.kaushalendra.me/)** · MIT © 2026 Kaushalendra Yadav
 
