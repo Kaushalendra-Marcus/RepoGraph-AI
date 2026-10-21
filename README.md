@@ -21,6 +21,20 @@ all running locally on your machine.
 
 ---
 
+## Demo
+
+<div align="center">
+
+<video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.png" width="640"></video>
+
+*16-second walkthrough: open a folder → auto-indexed graph → flow diagrams → Q&A — no setup, no CLI.*
+
+Video not playing? <a href="./public/assets/demo.mp4">Open it directly</a>.
+
+</div>
+
+---
+
 ## Why RepoGraph AI
 
 When you join a new project or explore open source, the hardest part is not reading individual
