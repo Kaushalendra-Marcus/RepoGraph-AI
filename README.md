@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./public/repograph-ai.png" alt="RepoGraph AI" width="100" height="100">
+<img src="./public/repograph-ai.svg" alt="RepoGraph AI" width="100" height="100">
 
 # RepoGraph AI
 
@@ -27,7 +27,7 @@ all running locally on your machine.
 
 <video src="./public/assets/demo.mp4" controls muted loop poster="./public/assets/demo-poster.png" width="640"></video>
 
-*16-second walkthrough: open a folder → auto-indexed graph → flow diagrams → Q&A — no setup, no CLI.*
+*walkthrough: open a folder → auto-indexed graph → flow diagrams → Q&A — no setup, no CLI.*
 
 Video not playing? <a href="./public/assets/demo.mp4">Open it directly</a>.
 
