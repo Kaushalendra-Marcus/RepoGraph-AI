@@ -2,7 +2,7 @@
   "name": "repograph-ai",
   "displayName": "RepoGraph AI",
   "description": "Visualize and understand any codebase instantly with AI-powered dependency graphs, file summaries, and codebase Q&A.",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "publisher": "kaushalendra",
   "license": "MIT",
 

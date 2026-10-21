@@ -2,6 +2,16 @@
 
 All notable changes to RepoGraph AI are documented here.
 
+## 1.0.2 — Polish release
+
+### Branding & docs
+- New README with real captures: 3D dependency sphere, 2D community clusters, a complete data-flow diagram, and the provider settings panel.
+- Refreshed logo / extension icon; demo links to the live walkthrough instead of bundling a video.
+
+### Packaging
+- Extension icon is now a single high-res PNG; package slimmed via `.vscodeignore` (no sources, docs, or node_modules inside).
+- Repository links corrected; `CHANGELOG.md` shipped for marketplace release notes.
+
 ## 1.0.0 — Initial release
 
 ### Core
